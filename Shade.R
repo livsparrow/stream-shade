@@ -33,7 +33,11 @@ library(rgdal)
 library(maptools)
 library(lattice)
 library(sp)
-
+library(sf)  #Simple Features
+library(raster)
+library(RColorBrewer)
+library(wesanderson)  #another color option
+library(classInt)
 
 # Section 3: Read and format data -----------------------------------------
 
@@ -48,18 +52,52 @@ df$time.m <- as.POSIXct(paste(df$date, df$time.m), format = '%m/%d/%Y %H:%M')  #
 df$time.l <- as.POSIXct(paste(df$date, df$time.l), format = '%m/%d/%Y %H:%M')  #add date of left photo to timestamp
 df$time.r <- as.POSIXct(paste(df$date, df$time.r), format = '%m/%d/%Y %H:%M')  #add date of right photo to timestamp
 df$date <- as.Date(df$date, format = '%m/%d/%Y')  #convert date column from factor to date
+#add the necessary metadata to plot the lat/lon coordinates
+df$geodetic.da <- "NAD83"
+df$utm.zone <- "15N"
 
 
 # Section 4: GIS Data Analysis --------------------------------------------
 
 
-##TO DO:figure out using GIS data
-#read data from shapefile and use to populate df
-#shp.boundary <- readOGR("H:/2017 BCWD Riparian Shading Study/R/Shade/GIS/Boundary.shp", "Boundary")
-#shp.creek <- readOGR("H:/2017 BCWD Riparian Shading Study/R/Shade/GIS/Creek.shp", "Creek")
+#read data from shapefile 
+shp.boundary <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Boundary.shp")
+shp.creek <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Creek.shp")
+shp.shade <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/BC_segs_shade_diss.shp")
+
+#plot the project boundary and creek location (Note that coordinates are in Northing and Easting)
+plot(st_geometry(shp.boundary), border = "black", lwd = 2, main = "Study Area Boundary")  #plots boundary of study area
+plot(st_geometry(shp.creek), add = TRUE, col = "blue")
+
+#plot the shade estimated by GIS analysis of 2011 LiDAR (Note that coordinates are in Northing and Easting)
+pal2 <- rev(wes_palette(n = 5, name = "Zissou"))
+br <- c(0, 20, 40, 60, 80, 100)
+offs <- 0.0000001 
+br[1] <- br[1] - offs 
+br[length(br)] <- br[length(br)] + offs 
+shade_cuts <- cut(shp.shade$Shade, br)
+plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],  
+     main = "Shade from GIS Analysis of 2011 LiDAR ")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
+legend("topright", legend = paste("<", round(br[-1])), col = pal2, lty = 1, lwd = 2)
+
+#read the locations of transects and add to the above plot (Note that coordinates are in lat and lon)
+utm15nCRS <- st_crs(shp.shade)  #save geospatial metadata
+cord.dec <- SpatialPoints(cbind(df$long.dec.deg, df$lat.dec.deg), proj4string = CRS("+proj=longlat"))  #save existing coodinates in lat-long system
+cord.UTM <- spTransform(cord.dec, CRS("+init=epsg:26915"))
+plot(cord.dec, axes = TRUE, main = "Lat-Long Coordinates", cex.axis = 0.95)
+plot(cord.UTM, axes = TRUE, main = "UTM Coordinates", col = "red", cex.axis = 0.95)
+df.cord.utm <- as.data.frame(cord.UTM)
+df$easting <- df.cord.utm$coords.x1
+df$northing <- df.cord.utm$coords.x2
+pts.transects <- st_as_sf(df, coords = c("easting", "northing"), crs = utm15nCRS)  #convert field data to sf for map
+plot(st_geometry(pts.transects), axes = TRUE) #test plot
+plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],
+     main = "Shade from GIS Analysis of 2011 LiDAR ")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
+legend("topright", legend = paste("<", round(br[-1])), col = pal2, lty = 1, lwd = 2)
+plot(st_geometry(pts.transects), add = TRUE) #test plot
 #shp.shade.lidar <- readOGR("H:/2017 BCWD Riparian Shading Study/R/Shade/GIS/BC_Segs_Shade.shp", "BC_Segs_Shade")
 #spplot(shp.creek)
-
+#and use to populate df
 
 # Section 5: Subset Dataframes -------------------------------------------
 
