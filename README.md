@@ -1,5 +1,5 @@
 # Riparian Shading Study
-
+ 
 The purpose of the riparian shading study is to identify the location and type of riparian (stream-side) vegetation needed to sustain water temperatures in a small cold-water stream that will support the health and reproduction of brown trout and other cold-water biota. The study is based in Brown's Creek located in Stillwater, Minnesota, USA. A particular challenge in this study is evaluating areas of the stream with predominantly grassy vegetation and prioritizing tree plantings where they will be most effective.
 
 This Git-Hub project is under development to execute multiple tasks within the study using R, including:
