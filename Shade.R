@@ -42,7 +42,7 @@ library(classInt)
 # Section 3: Read and format data -----------------------------------------
 
 
-#Read in and format the data
+#Read in and format the field data
 df <- read.csv('TidyTransectData.csv', header = TRUE)  #Read full table of data collected
 df$date <- as.character(df$date)  #convert date to character string
 df$time.m <- as.character(df$time.m)  #convert time of middle photo to character string
@@ -56,14 +56,21 @@ df$date <- as.Date(df$date, format = '%m/%d/%Y')  #convert date column from fact
 df$geodetic.da <- "NAD83"
 df$utm.zone <- "15N"
 
-
-# Section 4: GIS Data Analysis --------------------------------------------
-
-
-#read data from shapefile 
+#read in spatial data from shapefile 
 shp.boundary <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Boundary.shp")
 shp.creek <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Creek.shp")
 shp.shade <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/BC_segs_shade_diss.shp")
+
+#add northings and eastings to df since coordinates are only as lat and long format
+utm15nCRS <- st_crs(shp.shade)  #save geospatial metadata
+cord.dec <- SpatialPoints(cbind(df$long.dec.deg, df$lat.dec.deg), 
+                          proj4string = CRS("+proj=longlat"))  #save existing coodinates in lat-long system
+cord.UTM <- spTransform(cord.dec, CRS("+init=epsg:26915"))
+df.cord.utm <- as.data.frame(cord.UTM)
+df$easting <- df.cord.utm$coords.x1
+df$northing <- df.cord.utm$coords.x2
+
+# Section 4: Spatial Data Analysis --------------------------------------------
 
 #plot the project boundary and creek location (Note that coordinates are in Northing and Easting)
 plot(st_geometry(shp.boundary), border = "black", lwd = 2, main = "Study Area Boundary")  #plots boundary of study area
@@ -76,25 +83,35 @@ offs <- 0.0000001
 br[1] <- br[1] - offs 
 br[length(br)] <- br[length(br)] + offs 
 shade_cuts <- cut(shp.shade$Shade, br)
-plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],  
+plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],
+     xlab = "Easting", ylab = "Northing", 
      main = "Shade from GIS Analysis of 2011 LiDAR ")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
 legend("topright", legend = paste("<", round(br[-1])), col = pal2, lty = 1, lwd = 2)
 
-#read the locations of transects and add to the above plot (Note that coordinates are in lat and lon)
-utm15nCRS <- st_crs(shp.shade)  #save geospatial metadata
-cord.dec <- SpatialPoints(cbind(df$long.dec.deg, df$lat.dec.deg), proj4string = CRS("+proj=longlat"))  #save existing coodinates in lat-long system
-cord.UTM <- spTransform(cord.dec, CRS("+init=epsg:26915"))
-plot(cord.dec, axes = TRUE, main = "Lat-Long Coordinates", cex.axis = 0.95)
-plot(cord.UTM, axes = TRUE, main = "UTM Coordinates", col = "red", cex.axis = 0.95)
-df.cord.utm <- as.data.frame(cord.UTM)
-df$easting <- df.cord.utm$coords.x1
-df$northing <- df.cord.utm$coords.x2
+#add transect locations to the above plot (Note that coordinates are in lat and lon)
 pts.transects <- st_as_sf(df, coords = c("easting", "northing"), crs = utm15nCRS)  #convert field data to sf for map
-plot(st_geometry(pts.transects), axes = TRUE) #test plot
 plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],
-     main = "Shade from GIS Analysis of 2011 LiDAR ")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
-legend("topright", legend = paste("<", round(br[-1])), col = pal2, lty = 1, lwd = 2)
-plot(st_geometry(pts.transects), add = TRUE) #test plot
+     xlab = "Easting", ylab = "Northing", 
+     main = "Shade from GIS Analysis of 2011 LiDAR & Riparian Shading Study Transects")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
+legend("topright", legend = c("Transects", paste("<", round(br[-1]))), pch = c(1, NA, NA, NA, NA, NA, NA), 
+       lty = c(NA, 1, 1, 1, 1, 1, 1), col = c("black", pal2), lwd = 2)
+plot(st_geometry(pts.transects), add = TRUE)  # add transect locations to plot
+
+#determine and save the shade estimated using lidar into the df
+shp.shade.buf <- st_buffer(shp.shade, dist = 1) #st_buffer around shp.shade
+dist <- st_distance(pts.transects, shp.shade.buf)  #calculate distance between each creek segment and transect point
+i <- as.matrix(apply(dist, 1, which.min))  #find the row index in shp.shade.buf with the shortest distance to each point
+ss <- shp.shade.buf$Shade[i]
+pts.transects$shade.lidar.leafoff.dsm <- ss
+df[, "shade.lidar.leafoff.dsm"] <- ss
+plot(pts.transects["shade.lidar.leafoff.dsm"], axes = TRUE, col = pal2[as.numeric(shade_cuts)],
+     xlab = "Easting", ylab = "Northing", 
+     main = "Shade from GIS Analysis of 2011 LiDAR at Riparian Shading Study Transects")
+legend("topright", legend = paste("<", round(br[-1])), col = pal2, pch = 1, lwd = 2)
+#where pts.transects intersects with buffered shp.shade, add an attribute to pts.transects for $lidar.shade
+#save lidar shade to df (might need to first convert to df df.cord.utm <- as.data.frame(cord.UTM))
+
+
 #shp.shade.lidar <- readOGR("H:/2017 BCWD Riparian Shading Study/R/Shade/GIS/BC_Segs_Shade.shp", "BC_Segs_Shade")
 #spplot(shp.creek)
 #and use to populate df
