@@ -38,6 +38,7 @@ library(raster)
 library(RColorBrewer)
 library(wesanderson)  #another color option
 library(classInt)
+library(lidR)
 
 # Section 3: Read and format data -----------------------------------------
 
@@ -56,10 +57,26 @@ df$date <- as.Date(df$date, format = '%m/%d/%Y')  #convert date column from fact
 df$geodetic.da <- "NAD83"
 df$utm.zone <- "15N"
 
-#read in spatial data from shapefile 
-shp.boundary <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Boundary.shp")
-shp.creek <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Creek.shp")
-shp.shade <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/BC_segs_shade_diss.shp")
+#read in spatial data from shapefiles 
+shp.boundary <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Boundary2.shp")  #Study Area Bounndary
+shp.creek <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Creek.shp")  #Creek line
+shp.shade <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/BC_segs_shade_diss.shp")  #Thermal Study from Shade analysis
+shp.shade.dem <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/out_global_radiation2.shp")  #Topographic shade
+
+#read in DEM shade analysis output and calculate topographic shade
+shp.shade.dem$S4 <- 1 - shp.shade.dem$T4 / shp.shade.dem$T4[100]  #Monthly shade in May
+shp.shade.dem$S5 <- 1 - shp.shade.dem$T5 / shp.shade.dem$T5[100]  #Monthly shade in June
+shp.shade.dem$S6 <- 1 - shp.shade.dem$T6 / shp.shade.dem$T6[100]  #Monthly shade in July
+shp.shade.dem$S7 <- 1 - shp.shade.dem$T7 / shp.shade.dem$T7[100]  #Monthly shade in August
+shp.shade.dem$S8 <- 1 - shp.shade.dem$T8 / shp.shade.dem$T8[100]  #Monthly shade in September
+shp.shade.dem$growing.season.shade <- (shp.shade.dem$S4 + shp.shade.dem$S5 +  #Average shade over growing season
+  shp.shade.dem$S6 + shp.shade.dem$S7 + shp.shade.dem$S8) / 5
+ss.dem <- as.data.frame(shp.shade.dem$growing.season.shade[1:99])  #convert topographic shade to data frame
+df$shade.lidar.dem <- ss.dem  #save topographic shade to df
+
+#TO DO: Use LiDAR processing when finished in Arcmap or separate code
+#save to df at transect points
+#may need to access heigh along entire stream for modeling
 
 #add northings and eastings to df since coordinates are only as lat and long format
 utm15nCRS <- st_crs(shp.shade)  #save geospatial metadata
@@ -69,6 +86,11 @@ cord.UTM <- spTransform(cord.dec, CRS("+init=epsg:26915"))
 df.cord.utm <- as.data.frame(cord.UTM)
 df$easting <- df.cord.utm$coords.x1
 df$northing <- df.cord.utm$coords.x2
+write.csv(df, "data_table_with_coords") #write df to csv for use in ArcGIS
+
+
+
+
 
 # Section 4: Spatial Data Analysis --------------------------------------------
 
@@ -98,18 +120,21 @@ legend("topright", legend = c("Transects", paste("<", round(br[-1]))), pch = c(1
 plot(st_geometry(pts.transects), add = TRUE)  # add transect locations to plot
 
 #determine and save the shade estimated using lidar into the df
-shp.shade.buf <- st_buffer(shp.shade, dist = 1) #st_buffer around shp.shade
-dist <- st_distance(pts.transects, shp.shade.buf)  #calculate distance between each creek segment and transect point
+dist <- st_distance(pts.transects, shp.shade)  #calculate distance between each creek segment and transect point
 i <- as.matrix(apply(dist, 1, which.min))  #find the row index in shp.shade.buf with the shortest distance to each point
-ss <- shp.shade.buf$Shade[i]
+ss <- shp.shade$Shade[i]
 pts.transects$shade.lidar.leafoff.dsm <- ss
 df[, "shade.lidar.leafoff.dsm"] <- ss
+shade_cuts <- cut(pts.transects$shade.lidar.leafoff.dsm, br)
 plot(pts.transects["shade.lidar.leafoff.dsm"], axes = TRUE, col = pal2[as.numeric(shade_cuts)],
      xlab = "Easting", ylab = "Northing", 
      main = "Shade from GIS Analysis of 2011 LiDAR at Riparian Shading Study Transects")
 legend("topright", legend = paste("<", round(br[-1])), col = pal2, pch = 1, lwd = 2)
-#where pts.transects intersects with buffered shp.shade, add an attribute to pts.transects for $lidar.shade
-#save lidar shade to df (might need to first convert to df df.cord.utm <- as.data.frame(cord.UTM))
+
+
+
+
+
 
 
 #shp.shade.lidar <- readOGR("H:/2017 BCWD Riparian Shading Study/R/Shade/GIS/BC_Segs_Shade.shp", "BC_Segs_Shade")
@@ -172,84 +197,72 @@ ggplot(df.stage.m, aes(lens.height, shade * 100, colour = position)) + geom_poin
       #TODO: label reaches in each grid
       #TODO: check why bottom right reach has such as large difference in left position shade
 
-#TODO: I could not get the following code to work in R and need to reconcile issues to automate the process
-#     I ended up determining correction for curves external to R in the CSV files
+#METHOD 1: Using standard x value, interpolate corresponding y value
 #determine standard reference values for x and y
-# xs <- 0.2
-# rr <- c(3, 3, 3, 3, 3, 3)
-# tt <- c(6, 6, 6, 9, 9, 9)
-# pp <- c("Left", "Middle", "Right", "Left", "Middle", "Right")
-# x1 <- as.numeric(1)
-# x2 <- as.numeric(1)
-# y1 <- as.numeric(1)
-# y2 <- as.numeric(1)
-# y <- as.numeric(1)
-# x <- xs
-# ys <- data.frame(rr, tt, pp, x1, x2, y1, y2, xs, y)
-# for(i in 1:6) 
-# {
-#   r <- ys[i, 1]
-#   t <- ys[i, 2]  #current transect
-#   p <- ys[i, 3]  #current position (left, middle, right)
-#   ys[i, 4] <- min(df.stage.m$lens.height[df.stage.m$reach.id == r & df.stage.m$transect.no == t & 
-#                                      df.stage.m$position == p])
-#   ys[i, 5] <- min(df.stage.m$lens.height[df.stage.m$reach.id == r & df.stage.m$transect.no == t & 
-#                                      df.stage.m$position == p & df.stage.m$lens.height > ys[i, 4]])
-#   ys[i, 6] <- df.stage.m$shade[df.stage.m$reach.id == r & df.stage.m$transect.no == t & 
-#                                      df.stage.m$position == p & df.stage.m$lens.height == ys[i, 4]]
-#   ys[i, 7] <- df.stage.m$shade[df.stage.m$reach.id == r & df.stage.m$transect.no == t & 
-#                            df.stage.m$position == p & df.stage.m$lens.height == ys[i, 5]]
-#   
-# }
-# ys$y <- (ys$xs - ys$x1) * (ys$y2 - ys$y1) / (ys$x2 - ys$x1) + ys$y1  #interpolate reference value for shade
-# names(ys)[1] <- "reach.id"
-# names(ys)[2] <- "transect.no"
-# names(ys)[3] <- "position"
-# 
-# 
-# #Standardize the height and shade using reference values
-# #Loop through rows of stage dataframe to calculate standard normal deviate
-# for(i in 1:nrow(df.stage.m)) #each i is a row in the input table.each measurement has its own rowthere are multiple rows and measurements in each transect
-# {
-#   t <- df.stage.m[i, 2]  #current transect
-#   p <- df.stage.m[i, 3]  #current position (left, middle, right)
-#   #lens height:
-#   xstd <- ys$xs[ys$transect.no == t & ys$position == p]    
-#   df.stage.m[i, 6] <- df.stage.m[i, 4] / xstd   
-#   #shade:
-#   ystd <- ys$y[ys$transect.no == t & ys$position == p]
-#   df.stage.m[i, 7] <- df.stage.m[i, 5] / ystd   
-# }
-# names(df.stage.m)[6] <- "xstar1"
-# names(df.stage.m)[7] <- "ystar1"
-# #Plot normalized shade-stage curves for 2 grassy reference transects
-# ggplot(df.stage.m, aes(xstar1, ystar1, colour = position)) + geom_point() + geom_line() +
-#   labs(title = "3b: Standardized Stage-Shade Curves (WinSCANOPY shade)", x = "Std norm dev of lens height above water", 
-#        y = "Std norm dev of Average % Shade Over Growing Season")+
-#   facet_wrap(~ transect.no,  labeller = label_both)
-
-#Standardize the height and shade values using standard normal deviate
-#Loop through rows of stage dataframe to calculate standard normal deviate
-for(i in 1:nrow(df.stage.m)) #each i is a row in the input table.each measurement has its own rowthere are multiple rows and measurements in each transect
+xs <- 0.2
+rr <- c(3, 3, 3, 3, 3, 3, 2, 2, 2, 4, 4, 4)
+tt <- c(6, 6, 6, 9, 9, 9, 0, 0, 0, 5, 5, 5)
+pp <- c("Left", "Middle", "Right", "Left", "Middle", "Right", "Left", "Middle", "Right", "Left", "Middle", "Right")
+x1 <- as.numeric(1)
+x2 <- as.numeric(1)
+y1 <- as.numeric(1)
+y2 <- as.numeric(1)
+ys <- as.numeric(1)
+df.ys <- data.frame(rr, tt, pp, x1, x2, y1, y2, xs, ys)
+for(i in 1:length(rr))  #linear interpolation variables (x1, x2, y1, and y2) 
 {
-  if(df.stage.m[i, 1] == 3) {
-  t <- df.stage.m[i, 2]  #current transect
-  p <- df.stage.m[i, 3]  #current position (left, middle, right)
-  #lens height:
-  xbar <- mean(df.stage.m$lens.height[df.stage.m$transect.no == t & df.stage.m$position == p])   #average lens height
-  xs <- sd(df.stage.m$lens.height[df.stage.m$transect.no == t & df.stage.m$position == p])    #standard deviation of height
-  df.stage.m[i, 6] <- (df.stage.m[i, 4] - xbar) / xs   #standard normal deviate of measurement i
-  #shade:
-  ybar <- mean(df.stage.m$shade[df.stage.m$transect.no == t & df.stage.m$position == p])   #average shade
-  ys <- sd(df.stage.m$shade[df.stage.m$transect.no == t & df.stage.m$position == p])    #standard deviation of shade
-  df.stage.m[i, 7] <- (df.stage.m[i, 5] - ybar) / ys   #standard normal deviate of estimate i
-  }
+  r <- df.ys[i, 1]  #current reach
+  t <- df.ys[i, 2]  #current transect
+  p <- df.ys[i, 3]  #current position (left, middle, right)
+  df.ys[i, 4] <- min(df.stage.m$lens.height[df.stage.m$reach.id == r & df.stage.m$transect.no == t &
+                                     df.stage.m$position == p])
+  df.ys[i, 5] <- min(df.stage.m$lens.height[df.stage.m$reach.id == r & df.stage.m$transect.no == t &
+                                     df.stage.m$position == p & df.stage.m$lens.height > df.ys[i, 4]])
+  df.ys[i, 6] <- df.stage.m$shade[df.stage.m$reach.id == r & df.stage.m$transect.no == t &
+                                     df.stage.m$position == p & df.stage.m$lens.height == df.ys[i, 4]]
+  df.ys[i, 7] <- df.stage.m$shade[df.stage.m$reach.id == r & df.stage.m$transect.no == t &
+                           df.stage.m$position == p & df.stage.m$lens.height == df.ys[i, 5]]
+
 }
-names(df.stage.m)[6] <- "xstar2"
-names(df.stage.m)[7] <- "ystar2"
+#interpolate reference value for shade
+df.ys$ys <- (df.ys$xs - df.ys$x1) * (df.ys$y2 - df.ys$y1) / (df.ys$x2 - df.ys$x1) + df.ys$y1  
+names(df.ys)[1] <- "reach.id"
+names(df.ys)[2] <- "transect.no"
+names(df.ys)[3] <- "position"
+#save reference values to staging df
+df.stage.mer <- merge(df.stage.m, df.ys, by = c("reach.id", "transect.no","position"), all.x = TRUE)
+#Standardize the height and shade using reference values
+df.stage.mer$xstar1 <- df.stage.mer$lens.height / df.stage.mer$xs  #standardize lens height above stream
+df.stage.mer$ystar1 <- df.stage.mer$shade / df.stage.mer$ys  #standardize shade
+#Plot normalized shade-stage curves for 2 grassy reference transects
+ggplot(df.stage.mer, aes(xstar1, ystar1, colour = position)) + geom_point() + geom_line() +
+  labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
+       y = "Normalized Average Shade Over Growing Season")+
+  facet_wrap(~ transect.no,  labeller = label_both)
+
+#Method 2: Standardize the height and shade values using standard normal deviate
+#Loop through rows of stage dataframe to calculate standard normal deviate
+c <- ncol(df.stage.mer)  #number of columns in df.stage.mer
+for(i in 1:nrow(df.stage.mer)) #each i is a row in the input table.each measurement has its own rowthere are multiple rows and measurements in each transect
+{
+  #if(df.stage.mer[i, 1] == 3) {
+  t <- df.stage.mer[i, 2]  #current transect
+  p <- df.stage.mer[i, 3]  #current position (left, middle, right)
+  #lens height:
+  xbar <- mean(df.stage.mer$lens.height[df.stage.mer$transect.no == t & df.stage.mer$position == p])   #average lens height
+  xs <- sd(df.stage.mer$lens.height[df.stage.mer$transect.no == t & df.stage.mer$position == p])    #standard deviation of height
+  df.stage.mer[i, c + 1] <- (df.stage.mer[i, 4] - xbar) / xs   #standard normal deviate of measurement i
+  #shade:
+  ybar <- mean(df.stage.mer$shade[df.stage.mer$transect.no == t & df.stage.mer$position == p])   #average shade
+  ys <- sd(df.stage.mer$shade[df.stage.mer$transect.no == t & df.stage.mer$position == p])    #standard deviation of shade
+  df.stage.mer[i, c + 2] <- (df.stage.mer[i, 5] - ybar) / ys   #standard normal deviate of estimate i
+  #}
+}
+names(df.stage.mer)[c + 1] <- "xstar2"
+names(df.stage.mer)[c + 2] <- "ystar2"
 #Plot normalized shade-stage curves for 4 reference transects
-ggplot(df.stage.m, aes(xstar2, ystar2, colour = position)) + geom_point() + geom_line() +
-  labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY shade)", x = "Std norm dev of lens height above water", 
+ggplot(df.stage.mer, aes(xstar2, ystar2, colour = position)) + geom_point() + geom_line() +
+  labs(title = "1c: Standardized Stage-Shade Curves (WinSCANOPY) - Method 2", x = "Std norm dev of lens height above water", 
        y = "Std norm dev of Average % Shade Over Growing Season")+
   facet_wrap(~ transect.no,  labeller = label_both)
 
@@ -291,9 +304,25 @@ ggplot(df.transect.m, aes(transect.no, 100 * value, colour = variable)) + geom_p
 #Plot average shade at each transect and reach
 ggplot(df.transect, aes(transect.no, shade.avg * 100, group = factor(reach.id), colour = factor(reach.id))) +
   geom_point() + geom_line() + scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
-  labs(title = "2. Average Shade at Each Transect from WinSCANOPY Simulation",
+  labs(title = "2a. Average Shade at Each Transect from WinSCANOPY Simulation",
        x = "Transect #", y = "Average % Shade Over Growing Season") +
   facet_wrap(~ reach.id,  labeller = label_both)
+
+#Plot average shade at each transect and reach - comparing hemiphotos to LiDAR
+df.transect$shade.lidar.leafoff.dsm <- df.transect$shade.lidar.leafoff.dsm / 100
+df.transect.shade.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"), 
+                      measure.vars = c("shade.avg", "shade.lidar.leafoff.dsm"))
+colnames(df.transect.shade.m)[3] <- "method"  #update to reflect that variable column is the method of estimating shade
+levels(df.transect.shade.m$method) <- c(levels(df.transect.shade.m$method), "WinSCANOPY", "LiDAR")
+df.transect.shade.m$method[df.transect.shade.m$method == "shade.avg"] <- "WinSCANOPY"
+df.transect.shade.m$method[df.transect.shade.m$method == "shade.lidar.leafoff.dsm"] <- "LiDAR"
+ggplot(df.transect.shade.m, aes(transect.no, 100 * value, group = factor(reach.id), colour = method)) +
+  geom_point() +
+  scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
+  labs(title = "2b. Average Shade at Each Transect from WinSCANOPY Simulation and LiDAR Analysis",
+       x = "Transect #", y = "Average % Shade Over Growing Season") +
+  facet_wrap(~ reach.id,  labeller = label_both)
+
 
 #Plot observed values vs. shade in middle of stream for grassy transects
 df.transect.num.grass.m <- melt(df.transect.num.grass, id = c('shade.m'))
@@ -303,7 +332,7 @@ ggplot(data = df.transect.num.grass.m, aes(x = value, y = shade.m * 100, colour 
   facet_wrap( ~ variable, scales="free_x") + theme(legend.position = "none")
 
 #Plot observed values vs. shade in middle of stream for grassy transects
-df.transect.num.m <- melt(df.transect.num, id = c('shade.m'))
+df.transect.num.m <- melt(df.transect.num, id.vars = c('shade.m'))
 ggplot(data = df.transect.num.m, aes(x = value, y = shade.m * 100, colour = variable)) +
   geom_point() +  xlab("Independent Variables") + ylab("% Shade in middle of stream transect") +
   ggtitle("6b. Observed Values (All Transects)") + scale_y_continuous(breaks = seq(0, 100, 20)) +
@@ -324,6 +353,12 @@ df.transect.num.grass.m.height <- subset(df.transect.num.grass.m, variable == "h
 ggplot(df.transect.num.grass.m.height, aes(variable, value)) + geom_boxplot() +
   ylab("Veg Height (m)") + ggtitle("7b. Veg Height (Grassy Transects)")
 
+#Plot lens height based on vegetation type
+df.transect.lens.m <- melt(df.transect, id.vars = c('reach.id', 'transect.no', 'veg.code.avg'), 
+                           measure.vars = c('lens.height.m', 'lens.height.l', 'lens.height.r'))
+df.transect.lens.m$veg.code.avg <- factor(df.transect.lens.m$veg.code.avg)
+ggplot(df.transect.lens.m, aes(veg.code.avg, value)) + geom_boxplot() + xlab("Riparian Vegetation (Grass = 0...Forest = 1)") +
+  ylab("Lens Height Above Water (m)") + ggtitle("8. Height of Camera Lens Above Stream (All Transects)")
 
 # Section 9: Regression Models --------------------------------------------
 
