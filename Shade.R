@@ -146,16 +146,9 @@ df$veg.height.max.r.m <- apply(df[,c("HAR.r.m","herb.height.max.r.m")], 1, #save
 
 # Section 5: Subset Dataframes -------------------------------------------
 
-#subset the data into tables for use in analysis
-df.transect <- subset(df, purpose == 'Transect')  #Create a smaller table of just the transect observations
-df.transect.num <- df.transect[, sapply(df.transect, is.numeric)]  #Create df of only numeric values for correlation analysis
-df.transect.grass <- subset(df.transect, veg.code.avg == 0)  #Numerical observations at grassy & mixed transects
+#subset the data for use in analysis of stage-shade curves (other subsetting done after correction to common height)
 df.stage <- subset(df, purpose == 'Stage')  #Create a smaller table of just the staging observations
-df.test <- subset(df,purpose == 'Test')  #Create a smaller table of just the two sites to be used to test the regression
 
-#Create long dataframes for plotting results for each transect and stage-shade curves
-df.transect.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"), 
-                   measure.vars = c("shade.l", "shade.m", "shade.r", "shade.avg"))
 #Break the stage and height dataframes into separate objects so they can be melted and then merged later
 df.stage.height <- data.frame("reach.id" = df.stage$reach.id, "transect.no" = df.stage$transect.no,
                               "Left" = df.stage$lens.height.l, "Middle" = df.stage$lens.height.m,  
@@ -262,8 +255,8 @@ ss1 <- df.stage.mer1$ystar1
 # Nonlinear Regression: shade as function of lens height above stream
 # Solution using Downhill Simplex method
 data <- data.frame(cbind(c(1:20), hh1, ss1))
-names(data) <- c("obs", "norm.lens.height", "norm.shade")  #rename column headings
-datavv# Print original data in file
+names(data) <- c("obs", "norm.lens.height", "norm.shade")  # Rename column headings
+data  # Print original data in file
 summary(data)  # Basic Statistics
 x = data[, 2]  # Plot using second and third columns for lens height and shade
 y = data[, 3]
@@ -277,10 +270,10 @@ fexample1 <- function(b_parm) {  # Define minimization function to use in solvin
 }                                          
 # Determines optimal values using downhill simplex method of Nedler and Mead
 # Use initial values of bo = 10, and b1 = -1
-nonlinear = optim(c(10, -1), fexample1)  #this is the regression of the data, finding the optimatl parameters
+nonlinear = optim(c(10, -1), fexample1)  # find the optimal parameters for the regression line
 nonlinear$par  # Best fit parameter values
 nonlinear$value  # Residual sum of squares
-fexample2 <- function(b_parm, x) {  # Define function
+fexample2 <- function(b_parm, x) {  # Define power regression function
   bo = b_parm[1]
   b1 = b_parm[2]
   bo * exp(b1 * x)
@@ -301,17 +294,55 @@ r = range(data$norm.lens.height)
 d = seq(r[1], r[2], length = 100)
 lines(d, fexample2(nonlinear$par, d))
 legend(2.8, 1.1, c('obs', 'fit'), pch = c(2, NA), lty = c(NA, 1))
-# Create function to correct measured x and y to a common x and y using the regression 
-fcorr <- function(xm, ym, xs = 0.2, xc = 0.1){
+# TODO: clean up above code for formatting consistency & improve plots (use ggplot) &
+# TODO: add plot of the correction below, applied to the original stage-storage curves
+
+# Create function to correct measured x and y to a common height above stream using the above regression 
+fcorr <- function(b_parm, xm, ym, xs = 0.2, xc = 0.1){
+  bo = b_parm[1]
+  b1 = b_parm[2]
   ym * exp(b1 * (xc - xm) / xs)
 }
 
-#save old shade estimates to shade.l.varh, etc.
-#apply fcorr to df in order to correct estimated shade based on height above stream for low-shaded middle and right positions
-#copy over shade estimated by others
-#plot a new facet wrap of shade at transects and winscanopy vs. lidar
+# Update data frames to save the old Winscanopy shade (at varying lens heights)
+# TODO: would be cleaner to name columns this way in datatable (excel) and then this could be deleted (earlier graphs would need updates)
+df$shade.varh.m <- df$shade.m
+df$shade.varh.l <- df$shade.l
+df$shade.varh.r <- df$shade.r
+df$shade.varh.avg <- df$shade.avg
+# #correct low-shaded middle and right transect shading
+# df$shade.m[df$shade.varh.m < 0.5] <- fcorr(b_parm = nonlinear$par, xm = df$lens.height.m, ym = df$shade.varh.m)  
+# df$shade.r[df$shade.varh.r < 0.5] <- fcorr(b_parm = nonlinear$par, xm = df$lens.height.r, ym = df$shade.varh.r)
+# #recalculate average shade for all transects
+# df$shade.avg = mean(c(df$shade.m, df$shade.l, df$shade.r))
 
+for(i in 1:nrow(df)){  #linear interpolation variables (x1, x2, y1, and y2) 
+  if (df[i, which(colnames(df) == "shade.varh.m")] < 0.5) {
+    df[i, which(colnames(df) == "shade.m")] <- fcorr(b_parm = nonlinear$par, 
+                                                   xm = df[i, which(colnames(df) == "lens.height.m")], 
+                                                   ym = df[i, which(colnames(df) == "shade.varh.m")])
+  }
+  
+  if (df[i, which(colnames(df) == "shade.varh.r")] < 0.5) {
+    df[i, which(colnames(df) == "shade.r")] <- fcorr(b_parm = nonlinear$par, 
+                                                     xm = df[i, which(colnames(df) == "lens.height.r")], 
+                                                     ym = df[i, which(colnames(df) == "shade.varh.r")])
+  }
+  
+  df[i, which(colnames(df) == "shade.avg")] <- (df[i, which(colnames(df) == "shade.m")] + df[i, which(colnames(df) == "shade.l")] +
+                                                  df[i, which(colnames(df) == "shade.r")]) / 3
+}
+#Subset dataframe for use in the subsequent sections
+df.transect <- subset(df, purpose == 'Transect')  #Create a smaller table of just the transect observations
+df.transect.num <- df.transect[, sapply(df.transect, is.numeric)]  #Create df of only numeric values for correlation analysis
+df.transect.grass <- subset(df.transect, veg.code.avg == 0)  #Numerical observations at grassy & mixed transects
+df.test <- subset(df,purpose == 'Test')  #Create a smaller table of just the two sites to be used to test the regression
 
+#Create long dataframes for plotting results for each transect and stage-shade curves
+df.transect.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"), 
+                      measure.vars = c("shade.l", "shade.m", "shade.r", "shade.avg"))
+df.transect.varh.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"), 
+                      measure.vars = c("shade.varh.l", "shade.varh.m", "shade.varh.r", "shade.varh.avg"))
 
 # Section 7: Correlation Matrix -------------------------------------------
 
@@ -340,8 +371,15 @@ corrplot.mixed(df.transect.grass.corr, upper = "color", number.cex = .4, number.
 #TODO: Update these to plot updated shade based on height above stream
 #Plot shade for each reach and transect and position
 ggplot(df.transect.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
-  labs(title = "1. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
-       y = "Average % Shade Over Growing Season") +
+  labs(title = "1a. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
+       y = "Average % Shade Over Growing Season", caption = "after correction for lens height above stream") +
+  scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
+  facet_wrap(~ reach.id,  labeller = label_both)
+
+#Plot shade for each reach and transect and position (before height correction)
+ggplot(df.transect.varh.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
+  labs(title = "1b. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
+       y = "Average % Shade Over Growing Season", caption = "before correction for lens height above stream") +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
   facet_wrap(~ reach.id,  labeller = label_both)
 
