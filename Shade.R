@@ -17,7 +17,7 @@
 #fix variable labels in graphs to be more appropriate (i.e. not just their parameter numbers with periods)
 #note that it's left to right looking downstream
 #figure out how to import and use GIS data
-#TO DO: Whisker box plots of variables?
+#TO DO: plot maps of observed variables (leaflet?)
 
 
 # Section 2: Libraries ----------------------------------------------------
@@ -131,12 +131,17 @@ legend("topright", legend = paste("<", round(br[-1])), col = pal2, pch = 1, lwd 
 #across each stream segment resulting from the lidar and hemiphoto riparian shade analysis instead of at specific points.
 
 #Read the vegetation height above river (HAR) raster and populate the dataframe with this new information
-shp.pt.circ <- st_buffer(pts.transects, dist = 15)  #create 15m buffer circles around each data point
-har <- raster("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/rasters/Canopy_HAR1.tif")
-buf.elev <- raster::extract(har, shp.pt.circ, fun = max, sp = TRUE)  #extract max HAR into buffers around data pts
-df$HAR.m <- buf.elev$Canopy_HAR1
-df$veg.height.max.m <- apply(df[,c("HAR","herb.height.max.l.m","herb.height.max.r.m")], 1, #save maximum veg height from field
+shp.pt.circ <- st_buffer(pts.transects, dist = 10)  #create 27m buffer circles around each data point
+har.left <- raster("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/rasters/Canopy_HAR_Left1.tif")  #read left bank HAR
+har.right <- raster("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/rasters/Canopy_HAR_Right1.tif")  #read left bank HAR
+buf.elev.l <- raster::extract(har.left, shp.pt.circ, fun = max, sp = TRUE, na.rm = TRUE)  #extract max HAR into buffers around data pts
+buf.elev.r <- raster::extract(har.right, shp.pt.circ, fun = max, sp = TRUE, na.rm = TRUE)  #extract max HAR into buffers around data pts
+df$HAR.l.m <- buf.elev.l$Canopy_HAR_Left1
+df$HAR.r.m <- buf.elev.r$Canopy_HAR_Right1
+df$veg.height.max.l.m <- apply(df[,c("HAR.l.m","herb.height.max.l.m")], 1, #save maximum veg height from field
                              function(x) ifelse(all(is.na(x)), NA, max(x, na.rm = TRUE)))  #and LiDAR data
+df$veg.height.max.r.m <- apply(df[,c("HAR.r.m","herb.height.max.r.m")], 1, #save maximum veg height from field
+                               function(x) ifelse(all(is.na(x)), NA, max(x, na.rm = TRUE)))  #and LiDAR data
   #max function would return NA values without the code at the end of the above command
 
 # Section 5: Subset Dataframes -------------------------------------------
@@ -192,7 +197,7 @@ ggplot(df.stage.m, aes(lens.height, shade * 100, colour = position)) + geom_poin
   scale_y_continuous(breaks = seq(0, 100, 20)) +
   facet_wrap(~ reach.id + transect.no,  labeller = label_both)
 
-#METHOD 1: Using standard x value, interpolate corresponding y value
+#Define standard x value (xs) and interpolate corresponding ys value
 #determine standard reference values for x and y
 xs <- 0.2
 rr <- c(3, 3, 3, 3, 3, 3, 2, 2, 2, 4, 4, 4)
@@ -226,10 +231,10 @@ names(df.ys)[2] <- "transect.no"
 names(df.ys)[3] <- "position"
 #save reference values to staging df
 df.stage.mer <- merge(df.stage.m, df.ys, by = c("reach.id", "transect.no","position"), all.x = TRUE)
-#Standardize the height and shade using reference values
+#standardize the height and shade using reference values
 df.stage.mer$xstar1 <- df.stage.mer$lens.height / df.stage.mer$xs  #standardize lens height above stream
 df.stage.mer$ystar1 <- df.stage.mer$shade / df.stage.mer$ys  #standardize shade
-#Plot normalized shade-stage curves for all reference transects
+#plot normalized shade-stage curves for all reference transects
 ggplot(df.stage.mer, aes(xstar1, ystar1, colour = position)) + geom_point() + geom_line() +
   labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
        y = "Normalized Average Shade Over Growing Season") +
@@ -239,110 +244,73 @@ ggplot(df.stage.mer, aes(xstar1, ystar1, colour = position, group = line)) + geo
   labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
        y = "Normalized Average Shade Over Growing Season")
 
-#Method 2: Standardize the height and shade values using standard normal deviate
-#Loop through rows of stage dataframe to calculate standard normal deviate
-c <- ncol(df.stage.mer)  #number of columns in df.stage.mer
-for(i in 1:nrow(df.stage.mer)) #each i is a row in the input table.each measurement has its own rowthere are multiple rows and measurements in each transect
-{
-  #if(df.stage.mer[i, 1] == 3) {
-  t <- df.stage.mer[i, 2]  #current transect
-  p <- df.stage.mer[i, 3]  #current position (left, middle, right)
-  #lens height:
-  xbar <- mean(df.stage.mer$lens.height[df.stage.mer$transect.no == t & df.stage.mer$position == p])   #average lens height
-  xs <- sd(df.stage.mer$lens.height[df.stage.mer$transect.no == t & df.stage.mer$position == p])    #standard deviation of height
-  df.stage.mer[i, c + 1] <- (df.stage.mer[i, 4] - xbar) / xs   #standard normal deviate of measurement i
-  #shade:
-  ybar <- mean(df.stage.mer$shade[df.stage.mer$transect.no == t & df.stage.mer$position == p])   #average shade
-  ys <- sd(df.stage.mer$shade[df.stage.mer$transect.no == t & df.stage.mer$position == p])    #standard deviation of shade
-  df.stage.mer[i, c + 2] <- (df.stage.mer[i, 5] - ybar) / ys   #standard normal deviate of estimate i
-  #}
-}
-names(df.stage.mer)[c + 1] <- "xstar2"
-names(df.stage.mer)[c + 2] <- "ystar2"
-#Plot normalized shade-stage curves for 4 reference transects
-ggplot(df.stage.mer, aes(xstar2, ystar2, colour = position)) + geom_point() + geom_line() +
-  labs(title = "1c: Standardized Stage-Shade Curves (WinSCANOPY) - Method 2", x = "Std norm dev of lens height above water", 
-       y = "Std norm dev of Average % Shade Over Growing Season")+
-  facet_wrap(~ reach.id + transect.no,  labeller = label_both)
-
-#Method 1 was identified as the best method for normalizing the shade-storage curves
-#Next, look at developing regression models to use in correcting shade in the transects df
-#add natural-log transformations to the dataset
-df.stage.mer$xstar1.log <- log(df.stage.mer$xstar1)
-df.stage.mer$ystar1.log <- log(df.stage.mer$ystar1)
+#Developing regression models to use in correcting shade in the transects df
 #divide the df into three based on shade since they look like they have three separate relationships
-df.stage.mer1 <- subset(df.stage.mer, shade < 0.5 & position != "Left")  #df for developing model for adjusting low-shaded areas (not left)
+df.stage.mer1 <- subset(df.stage.mer, shade < 0.5 & position != "Left")  #df for developing model for adjusting 
+                                                                        #low-shaded transects in middle and right positions
 df.stage.mer2 <- subset(df.stage.mer, shade >= 0.5)  #df for developing model for adjusting high-shaded areas
-df.stage.mer3 <- subset(df.stage.mer, position == "Left" & transect.no == 6)
-#write to CSV for externally estimating exponential equation
-write.csv(df.stage.mer1, "normalized staging tables_grassy middle and right")
+df.stage.mer3 <- subset(df.stage.mer, position == "Left" & transect.no == 6)  #df for the unique left position curve
+#note: df.stage.mer2 and df.stage.mer3 are not used beyond this point because forested areas did not see a lot of change vs. height
+    #for the left bank, there may be significant change from heighted elevations, however these were not common in grassy reaches.
+    #further work will be done in my thesis to do further corrections on the left bank df.stage.mer3 and to demsontrate the flattness
+    #of df.stage.mer2. Hereafter, adjustments are only made for middle and right bank shading in low-shaded reaches.
+
 #define independent variables for plotting and modeling
 hh1 <- df.stage.mer1$xstar1
-hh2 <- df.stage.mer2$xstar1
-hh1.l <- df.stage.mer1$xstar1.log
-hh2.l <- df.stage.mer2$xstar1.log
 ss1 <- df.stage.mer1$ystar1
-ss2 <- df.stage.mer2$ystar1
-ss1.l <- df.stage.mer1$ystar1.log
-ss2.l <- df.stage.mer2$ystar1.log
 
-#Linear Regressions
-m1a <- lm(ystar1 ~ xstar1, df.stage.mer1) #Model 1, Method A: Linear Regression
-dfm1a <- data.frame(x = hh1, yobs = ss1, y = predict(m1a, data.frame(xstar1 = hh1)), 
-                    sres = rstandard(m1a)) #df of standard residuals and predicted values
-ggplot(dfm1a, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
-  geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-  xlab("Normalized Lens Height Above Water") + ylab("Standardized Residuals") +
-  ggtitle("S-S Model 1a (Linear): Standardized Residuals vs. Independent Variable")
-ggplot() +  #plot observed and predicted values
-  geom_point(data = df.stage.mer1, aes(x = xstar1, y = ystar1)) +
-  geom_line(data = dfm1a, aes(x = x, y = y)) + ylab("Normalized Average Shade Over Growing Season") +
-  xlab("Normalized Lens Height Above Water") + ggtitle("S-S Model 1a (Linear): Observed & Predicted Values")
+# Nonlinear Regression: shade as function of lens height above stream
+# Solution using Downhill Simplex method
+data <- data.frame(cbind(c(1:20), hh1, ss1))
+names(data) <- c("obs", "norm.lens.height", "norm.shade")  #rename column headings
+datavv# Print original data in file
+summary(data)  # Basic Statistics
+x = data[, 2]  # Plot using second and third columns for lens height and shade
+y = data[, 3]
+plot(x, y, xlab = 'Normalized height above stream', ylab = 'Normalized shade') 
+fexample1 <- function(b_parm) {  # Define minimization function to use in solving for the parameters
+  x = data[, 2]
+  y = data[, 3]
+  bo = b_parm[1]
+  b1 = b_parm[2]
+  sum( ( y - bo * exp(b1 * x) ) ^ 2 )
+}                                          
+# Determines optimal values using downhill simplex method of Nedler and Mead
+# Use initial values of bo = 10, and b1 = -1
+nonlinear = optim(c(10, -1), fexample1)  #this is the regression of the data, finding the optimatl parameters
+nonlinear$par  # Best fit parameter values
+nonlinear$value  # Residual sum of squares
+fexample2 <- function(b_parm, x) {  # Define function
+  bo = b_parm[1]
+  b1 = b_parm[2]
+  bo * exp(b1 * x)
+}
+fexample2(nonlinear$par, 2)  # Illustration of computation of predicted value
+# Compute ANOVA values (anova(nonlinear) not available for nls)
+SSTO = sum((data$Norm.shade - mean(data$norm.shade)) ^ 2)
+SSE = nonlinear$value
+c_d <- 1 - SSE/SSTO
+SSR = sum((fexample2(nonlinear$par, x)
+           - mean(data$norm.shade)) ^ 2)
+sprintf('SSTO=%.1f, SSE=%.1f, SSR=%.1f, c_d=%.3f', SSTO, SSE, SSR, c_d)
+# Graph solution		
+par(cex = 2)
+plot(norm.shade ~ norm.lens.height, data, pch = 2,
+     xlab = 'Normalized lens height above stream', ylab = 'Normalized shade')
+r = range(data$norm.lens.height)
+d = seq(r[1], r[2], length = 100)
+lines(d, fexample2(nonlinear$par, d))
+legend(2.8, 1.1, c('obs', 'fit'), pch = c(2, NA), lty = c(NA, 1))
+# Create function to correct measured x and y to a common x and y using the regression 
+fcorr <- function(xm, ym, xs = 0.2, xc = 0.1){
+  ym * exp(b1 * (xc - xm) / xs)
+}
 
-m2a <- lm(ystar1 ~ xstar1, df.stage.mer2) #Model 2, Method A: Linear Regression
-dfm2a <- data.frame(x = hh2, yobs = ss2, y = predict(m2a, data.frame(xstar1 = hh2)), 
-                    sres = rstandard(m2a)) #df of standard residuals and predicted values
-ggplot(dfm2a, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
-  geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-  xlab("Normalized Lens Height Above Water") + ylab("Standardized Residuals") +
-  ggtitle("S-S Model 2a (Linear): Standardized Residuals vs. Independent Variable")
-ggplot() +  #plot observed and predicted values
-  geom_point(data = df.stage.mer2, aes(x = xstar1, y = ystar1)) +
-  geom_line(data = dfm2a, aes(x = x, y = y)) + ylab("Normalized Average Shade Over Growing Season") +
-  xlab("Normalized Lens Height Above Water") + ggtitle("S-S Model 2a (Linear): Observed & Predicted Values")
+#save old shade estimates to shade.l.varh, etc.
+#apply fcorr to df in order to correct estimated shade based on height above stream for low-shaded middle and right positions
+#copy over shade estimated by others
+#plot a new facet wrap of shade at transects and winscanopy vs. lidar
 
-#Power Function Regressions
-m1b <- lm(ystar1.log ~ xstar1.log, df.stage.mer1) #Model 1, Method B: Nonlinear regression (power function)
-dfm1b <- data.frame(x = hh1.l, yobs = ss1.l, y = predict(m1b, data.frame(xstar1.log = hh1.l)), 
-                    sres = rstandard(m1b)) #df of standard residuals and predicted values
-ggplot(dfm1b, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
-  geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-  xlab("Log-transformed and Normalized Lens Height Above Water") + ylab("Standardized Residuals") +
-  ggtitle("S-S Model 1b (Power): Standardized Residuals vs. Independent Variable")
-ggplot() +  #plot observed and predicted values
-  geom_point(data = df.stage.mer1, aes(x = xstar1.log, y = ystar1.log)) +
-  geom_line(data = dfm1b, aes(x = x, y = y)) + ylab("Log-transformed and Normalized Average Shade Over Growing Season") +
-  xlab("Log-transformed andNormalized Lens Height Above Water") + 
-  ggtitle("S-S Model 1b (Power): Observed & Predicted Values")
-#Compare to linear method:
-dfm1a$method <- "1a: Linear"
-dfm1b$method <- "1b: Power"
-dfm1b$x <- exp(dfm1b$x)  #undo transformation on observed x
-dfm1b$yobs <- exp(dfm1b$yobs)  #undo transformation on observed y
-dfm1b$y <- exp(dfm1b$y)  #undo transformation on predicted y
-dfm1.comb <- rbind.data.frame(dfm1a, dfm1b)  #combine the residuals and predicted datasets
-ggplot(data = dfm1.comb, aes(x = x, y = sres, colour = method)) + #Standardized residuals plots
-  geom_hline(yintercept=0, col="red", linetype="dashed") +
-  geom_point() + xlab("Normalized Lens Height Above Water") + ylab("Standardized Residual") +
-  ggtitle("Model 1: Standardized Residuals Plots") + facet_wrap(~ method, scales = "free_x")
-ggplot(data = dfm1.comb, aes(x = x, y = yobs, colour = method)) + #Plot all observed vs. predicted for comparison
-  geom_point() + geom_line(aes(x = x, y = y)) + xlab("Normalized Lens Height Above Water") + 
-  ylab("Normalized Average Shade Over Growing Season") + ggtitle("Model 1: Observed & Predicted Values") +
-  facet_wrap(~ method)
-
-
-
-#TODO: once normalization method is finished - apply to df in order to correct estimated shade based on height above stream
 
 
 # Section 7: Correlation Matrix -------------------------------------------
@@ -462,14 +430,11 @@ lhr <- df.transect$lens.height.r
 wel <- df.transect$wetted.edge.l.m
 wer <- df.transect$wetted.edge.r.m
 hmaxavg <- df.transect$herb.height.max.avg.m 
-asp <- df.transect$stream.aspect.deg
-ori <- df.transect$stream.orient.from.north
+vhmaxr <- df.transect$veg.height.max.r.m
+azm <- df.transect$strm.azimuth
+azgen <- df.transect$gen.strm.azimuth
 vdens <- df.transect$veg.dens.avg
 hmodavg <- df.transect$herb.height.mode.avg.m
-#ypred = predict(mod2, data.frame(wetted.width.m = ww, thalweg.depth.m = tw, lens.height.m = lhm, 
-#veg.code.avg = vv, wetted.edge.l.m = wel, wetted.edge.r.m = wer, 
-#herb.height.max.avg.m = hmaxavg, stream.aspect.deg = asp, 
-#veg.dens.avg = vdens, herb.height.mode.avg.m = hmodavg)))
 
 #Linear regression model (Model #1a: Veg Type vs. Shade in Middle)
 mod1a <- lm(shade.m ~ veg.code.avg, df.transect)
@@ -507,7 +472,8 @@ ggplot() +  #plot observed and predicted values
 
 #Multiple linear regression model (Model #2: all parameters for shade in middle of stream)
 mod2 <- lm(shade.m ~ wetted.width.m + thalweg.depth.m + lens.height.m + veg.code.avg + 
-             wetted.edge.l.m + wetted.edge.r.m + herb.height.max.avg.m + stream.aspect.deg, df.transect)
+             wetted.edge.l.m + wetted.edge.r.m + herb.height.max.avg.m + strm.azimuth + veg.height.max.l.m +
+             veg.height.max.r.m, df.transect)
 anova(mod2)  #Print ANOVA results
 summary(mod2)  #Print coefficients
 df2 <- data.frame(ypred = fitted(mod2), sres = rstandard(mod2)) 
@@ -518,7 +484,7 @@ ggplot(df2, aes(x = ypred * 100, y = sres)) + geom_point() +  #Standardized resi
 
 #Multiple linear regression model (Model #3: ind vars sig at 5% level for shade in middle of stream)
 mod3 <- lm(shade.m ~ wetted.width.m + thalweg.depth.m + lens.height.m + veg.code.avg + 
-            stream.aspect.deg + veg.dens.avg + herb.height.mode.avg.m, df.transect)
+             strm.azimuth + veg.dens.avg + herb.height.mode.avg.m, df.transect)
 anova(mod3)  #Print ANOVA results
 summary(mod3)  #Print coefficients
 df3 <- data.frame(ypred = fitted(mod3), sres = rstandard(mod3)) 
@@ -674,24 +640,43 @@ ggplot() +  #plot observed and predicted values
   scale_y_continuous(breaks = seq(0, 100, 20)) +
   scale_colour_gradientn(colours = rainbow(4))
 
-#Linear regression model (Model #13: Orientation of Stream vs. Shade in Middle)
-mod13 <- lm(shade.m ~ stream.orient.from.north, df.transect)
+#Linear regression model (Model #13: General Azimuth of Stream vs. Shade in Middle)
+mod13 <- lm(shade.m ~ gen.strm.azimuth, df.transect)
 anova(mod13)  #Print ANOVA results
 summary(mod13)  #Print coefficients
-df13 <- data.frame(x = ori, y = predict(mod13, data.frame(stream.orient.from.north = ori)), 
+df13 <- data.frame(x = azgen, y = predict(mod13, data.frame(gen.strm.azimuth = azgen)), 
                    sres = rstandard(mod13))  #df of predicted and standard residual values from the linear model
 ggplot(df13, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-  xlab("Orientation of Stream (degrees)") + ylab("Standardized Residuals") +
-  ggtitle("Model 13: Standardized Residuals vs. Independent Variable")
+  xlab("General Stream Azimuth (degrees)") + ylab("Standardized Residuals") +
+  ggtitle("Model 13: Standardized Residuals vs. Independent Variable") + 
+  labs(caption = "The departure angle of the stream from a south reference line (North-South = 0, Northwest-Southeast = -45)")
 ggplot() +  #plot observed and predicted values
-  geom_point(data = df.transect, aes(x = stream.orient.from.north, y = shade.m * 100, colour = veg.code.avg)) +
+  geom_point(data = df.transect, aes(x = gen.strm.azimuth, y = shade.m * 100, colour = veg.code.avg)) +
   geom_line(data = df13, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-  xlab("Orientation of Stream (degrees)") + ggtitle("Model 13: Observed & Predicted Values") + 
+  xlab("General Stream Azimuth (degrees)") + ggtitle("Model 13: Observed & Predicted Values") + 
   scale_y_continuous(breaks = seq(0, 100, 20)) +
-  scale_colour_gradientn(colours = rainbow(4))
+  scale_colour_gradientn(colours = rainbow(4)) + 
+  labs(caption = "The departure angle of the stream from a south reference line (North-South = 0, Northwest-Southeast = -45)")
 
-
+#Linear regression model (Model #14: Max Veg Height on Right vs. Shade in Middle)
+mod14 <- lm(shade.m ~ veg.height.max.r.m, df.transect)
+anova(mod14)  #Print ANOVA results
+summary(mod14)  #Print coefficients
+df14 <- data.frame(x = vhmaxr, y = predict(mod14, data.frame(veg.height.max.r.m = vhmaxr)), 
+                   sres = rstandard(mod14))  #df of predicted and standard residual values from the linear model
+ggplot(df14, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
+  geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
+  xlab("Maximum Height of Vegetation on Right Bank (m)") + ylab("Standardized Residuals") +
+  ggtitle("Model 14: Standardized Residuals vs. Independent Variable") + 
+  labs(caption = "within a 10 m offset from the creek centerline")
+ggplot() +  #plot observed and predicted values
+  geom_point(data = df.transect, aes(x = veg.height.max.r.m, y = shade.m * 100, colour = veg.code.avg)) +
+  geom_line(data = df14, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
+  xlab("Maximum Height of Vegetation on Right Bank (m)") + ggtitle("Model 14: Observed & Predicted Values") + 
+  scale_y_continuous(breaks = seq(0, 100, 20)) +
+  scale_colour_gradientn(colours = rainbow(4)) + 
+  labs(caption = "within a 10 m offset from the creek centerline")
 
 # Section 10: Test Regression Model ---------------------------------------
 
