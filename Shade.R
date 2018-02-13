@@ -435,6 +435,14 @@ df.transect.num.grass.m.height <- subset(df.transect.num.grass.m, variable == "h
 ggplot(df.transect.num.grass.m.height, aes(variable, value)) + geom_boxplot() +
   ylab("Veg Height (m)") + ggtitle("7b. Veg Height (Grassy Transects)")
 
+#Plot wetted width based on vegetation type
+df.transect.width.m <- melt(df.transect, id.vars = c("reach.id", "transect.no", "veg.code.avg"), 
+                              measure.vars = c("wetted.width.m"))
+df.transect.width.m$veg.code.avg <- factor(df.transect.width.m$veg.code.avg)
+ggplot(df.transect.width.m, aes(veg.code.avg, value)) + geom_boxplot() + xlab("Riparian Vegetation (Grass = 0...Forest = 1)") +
+  ylab("Wetted Width (m)") + ggtitle("7c. Wetted Width (All Transects)")
+
+
 #Plot lens height based on vegetation type
 df.transect.lens.m <- melt(df.transect, id.vars = c('reach.id', 'transect.no', 'veg.code.avg'), 
                            measure.vars = c('lens.height.m', 'lens.height.l', 'lens.height.r'))
