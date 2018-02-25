@@ -61,20 +61,21 @@ df$utm.zone <- "15N"
 #read in spatial data from shapefiles 
 shp.boundary <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Boundary2.shp")  #Study Area Bounndary
 shp.creek <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Creek.shp")  #Creek line
-shp.shade <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/BC_segs_shade_diss.shp")  #Thermal Study from Shade analysis
+shp.shade <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/Raw LiDAR shade results/Model_SegsBuffer2.shp")  #Thermal Study Shade analysis
 shp.shade.dem <- st_read("H:/2017 BCWD Riparian Shading Study/R/stream-shade/GIS/out_global_radiation2.shp")  #Topographic shade
 #Height of vegetation above river at transects from DSM
 
-#read in DEM shade analysis output and calculate topographic shade
-shp.shade.dem$S4 <- 1 - shp.shade.dem$T4 / shp.shade.dem$T4[100]  #Monthly shade in May
-shp.shade.dem$S5 <- 1 - shp.shade.dem$T5 / shp.shade.dem$T5[100]  #Monthly shade in June
-shp.shade.dem$S6 <- 1 - shp.shade.dem$T6 / shp.shade.dem$T6[100]  #Monthly shade in July
-shp.shade.dem$S7 <- 1 - shp.shade.dem$T7 / shp.shade.dem$T7[100]  #Monthly shade in August
-shp.shade.dem$S8 <- 1 - shp.shade.dem$T8 / shp.shade.dem$T8[100]  #Monthly shade in September
-shp.shade.dem$growing.season.shade <- (shp.shade.dem$S4 + shp.shade.dem$S5 +  #Average shade over growing season
-  shp.shade.dem$S6 + shp.shade.dem$S7 + shp.shade.dem$S8) / 5
-ss.dem <- as.data.frame(shp.shade.dem$growing.season.shade[1:99])  #convert topographic shade to data frame
-df$shade.lidar.dem <- ss.dem  #save topographic shade to df
+#read in DEM shade analysis output and calculate topographic shade #TO DO: update GIS layer with new topo shade results
+# shp.shade.dem$S4 <- 1 - shp.shade.dem$T4 / shp.shade.dem$T4[100]  #Monthly shade in May
+# shp.shade.dem$S5 <- 1 - shp.shade.dem$T5 / shp.shade.dem$T5[100]  #Monthly shade in June
+# shp.shade.dem$S6 <- 1 - shp.shade.dem$T6 / shp.shade.dem$T6[100]  #Monthly shade in July
+# shp.shade.dem$S7 <- 1 - shp.shade.dem$T7 / shp.shade.dem$T7[100]  #Monthly shade in August
+# shp.shade.dem$S8 <- 1 - shp.shade.dem$T8 / shp.shade.dem$T8[100]  #Monthly shade in September
+# shp.shade.dem$growing.season.shade <- (shp.shade.dem$S4 + shp.shade.dem$S5 +  #Average shade over growing season
+#   shp.shade.dem$S6 + shp.shade.dem$S7 + shp.shade.dem$S8) / 5
+# ss.dem <- as.data.frame(shp.shade.dem$growing.season.shade[1:99])  #convert topographic shade to data frame
+# df$shade.lidar.dem <- ss.dem  #save topographic shade to df
+#TODO: fix the above calculation which was setting the value of each shade.lidar.dem to the full ss.dem dataframe
 
 #add northings and eastings to df since coordinates are only as lat and long format
 utm15nCRS <- st_crs(shp.shade)  #save geospatial metadata
@@ -88,9 +89,20 @@ df$northing <- df.cord.utm$coords.x2
 
 # Section 4: Spatial Data Analysis --------------------------------------------
 
+#TODO add back in the analysis of the calibrated Lidar shade from the thermal study
+
 #plot the project boundary and creek location (Note that coordinates are in Northing and Easting)
 plot(st_geometry(shp.boundary), border = "black", lwd = 2, main = "Study Area Boundary")  #plots boundary of study area
 plot(st_geometry(shp.creek), add = TRUE, col = "blue")
+
+#calculate total growing season shade from 2011 LiDAR analysis
+months <- c("MayMN", "JunMN", "JulMN", "AugMN", "SepMN")  #define headings of columns used in calculations below
+df.shp.shade <- as.data.frame(shp.shade)  #create a dataframe version of the shade shapefile attributes
+df.shp.shade$total.rad <- rowSums(df.shp.shade[, c(months)])  #sum of total radiation reaching each transect over the growing season
+df.shp.shade$max.rad <- sum(sapply(df.shp.shade[, c(months)], max))  #sum of maximum radiation each month (i.e. "above canopy" radiation)
+df.shp.shade$Shade <- (1 - df.shp.shade$total.rad / df.shp.shade$max.rad) * 100  #calculate total shade at each transect
+shp.shade$Shade <- df.shp.shade$Shade  #save shade back to shapefile
+shp.shade <- shp.shade[shp.boundary,]  #clip to study area boundary
 
 #plot the shade estimated by GIS analysis of 2011 LiDAR (Note that coordinates are in Northing and Easting)
 pal2 <- rev(wes_palette(n = 5, name = "Zissou"))
@@ -99,31 +111,32 @@ offs <- 0.0000001
 br[1] <- br[1] - offs 
 br[length(br)] <- br[length(br)] + offs 
 shade_cuts <- cut(shp.shade$Shade, br)
-plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],
-     xlab = "Easting", ylab = "Northing", 
-     main = "Shade from GIS Analysis of 2011 LiDAR ")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
-legend("topright", legend = paste("<", round(br[-1])), col = pal2, lty = 1, lwd = 2)
+#plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
+plot(shp.shade["Shade"], lwd = 0.2, axes = TRUE, col = pal2[as.numeric(shade_cuts)], border = pal2[as.numeric(shade_cuts)],
+     xlab = "Easting", ylab = "Northing", main = "Shade from GIS Analysis of 2011 LiDAR", cex.axis = 0.6)  
+legend("topright", legend = paste("<", round(br[-1])), col = pal2, lty = 1, lwd = 2, cex = .3)
 
-#add transect locations to the above plot (Note that coordinates are in lat and lon)
+#add transect locations to the above plot (Note that coordinates are in lat and long)
 pts.transects <- st_as_sf(df, coords = c("easting", "northing"), crs = utm15nCRS)  #convert field data to sf for map
 plot(shp.shade["Shade"], lwd = 2, axes = TRUE, col = pal2[as.numeric(shade_cuts)],
-     xlab = "Easting", ylab = "Northing", 
+     border = pal2[as.numeric(shade_cuts)], xlab = "Easting", ylab = "Northing", cex.axis = 0.6,
      main = "Shade from GIS Analysis of 2011 LiDAR & Riparian Shading Study Transects")  #plot shade estimated using ArcGIS Solar Radiation tool and LiDAR
 legend("topright", legend = c("Transects", paste("<", round(br[-1]))), pch = c(1, NA, NA, NA, NA, NA, NA), 
-       lty = c(NA, 1, 1, 1, 1, 1, 1), col = c("black", pal2), lwd = 2)
+       lty = c(NA, 1, 1, 1, 1, 1, 1), col = c("black", pal2), lwd = 2, cex = .3)
 plot(st_geometry(pts.transects), add = TRUE)  # add transect locations to plot
 
 #determine and save the shade estimated using lidar into the df
 dist <- st_distance(pts.transects, shp.shade)  #calculate distance between each creek segment and transect point
-i <- as.matrix(apply(dist, 1, which.min))  #find the row index in shp.shade.buf with the shortest distance to each point
+i <- as.matrix(apply(dist, 1, which.min))  #find the row index in dist with the shortest distance to each point
 ss <- shp.shade$Shade[i]
 pts.transects$shade.lidar.leafoff.dsm <- ss
 df[, "shade.lidar.leafoff.dsm"] <- ss
 shade_cuts <- cut(pts.transects$shade.lidar.leafoff.dsm, br)
 plot(pts.transects["shade.lidar.leafoff.dsm"], axes = TRUE, col = pal2[as.numeric(shade_cuts)],
-     xlab = "Easting", ylab = "Northing", 
+     xlab = "Easting", ylab = "Northing", cex.axis = 0.6,
      main = "Shade from GIS Analysis of 2011 LiDAR at Riparian Shading Study Transects")
-legend("topright", legend = paste("<", round(br[-1])), col = pal2, pch = 1, lwd = 2)
+legend("topright", legend = paste("<", round(br[-1])), col = pal2, pch = 1, lwd = 2, cex = .3)
+df$shade.lidar.leafoff.dsm <- df$shade.lidar.leafoff.dsm / 100  #convert to fraction
 
 #TODO: the above uses the lidar results AFTER they were calibrated by Bill Herb - check his email to see if 
 #I need to use original results. They were also averaged over 20+ foot segments of the stream, but Bill did not recommend
@@ -175,7 +188,7 @@ df.stage.m.39L <- subset(df.stage.m, transect.no == 9 & position == "Left")
 df.stage.m.39M <- subset(df.stage.m, transect.no == 9 & position == "Middle")
 df.stage.m.39R <- subset(df.stage.m, transect.no == 9 & position == "Right")
 #write each to curve CSV
-write.csv(df.stage.m, "staging tables")
+write.csv(df.stage.m, "data_table_staging_tables")
 
 
 # Section 6: Regression of Stage-Shade Curves and Correction --------------
@@ -343,11 +356,17 @@ df.transect.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"),
                       measure.vars = c("shade.l", "shade.m", "shade.r", "shade.avg"))
 df.transect.varh.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"), 
                       measure.vars = c("shade.varh.l", "shade.varh.m", "shade.varh.r", "shade.varh.avg"))
+#export shade results for use in stream temperature model shade input
+vars <- c("date", "reach.id", "transect.no", "station.m", "shade.lidar.leafoff.dsm", "shade.avg")  #define variables to keep in exported df
+dfclip <- df[vars]  #create clipped version of df
+write.csv(dfclip, file = "data_table_winscanopy_transect_shade")
+write.csv(df, "data_table_all.csv")  #Write a copy of the full data table to a csv file
+
 
 # Section 7: Correlation Matrix -------------------------------------------
 
 
-#correlation between independent & dependent variables
+#assess correlation between independent & dependent variables
 df.transect.num$total.site.factor.m <- NULL  #delete total site factor columns
 df.transect.num$total.site.factor.l <- NULL  #delete total site factor columns
 df.transect.num$total.site.factor.r <- NULL  #delete total site factor columns
@@ -368,15 +387,14 @@ corrplot.mixed(df.transect.grass.corr, upper = "color", number.cex = .4, number.
 
 # Section 8: Plot Observed Data and Summary Statistics --------------------
 
-#TODO: Update these to plot updated shade based on height above stream
-#Plot shade for each reach and transect and position
+#Plot shade for each reach and transect and position (after lens height correction)
 ggplot(df.transect.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
   labs(title = "1a. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
        y = "Average % Shade Over Growing Season", caption = "after correction for lens height above stream") +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
   facet_wrap(~ reach.id,  labeller = label_both)
 
-#Plot shade for each reach and transect and position (before height correction)
+#Plot shade for each reach and transect and position (before lens height correction)
 ggplot(df.transect.varh.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
   labs(title = "1b. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
        y = "Average % Shade Over Growing Season", caption = "before correction for lens height above stream") +
@@ -390,8 +408,7 @@ ggplot(df.transect, aes(transect.no, shade.avg * 100, group = factor(reach.id), 
        x = "Transect #", y = "Average % Shade Over Growing Season") +
   facet_wrap(~ reach.id,  labeller = label_both)
 
-#Plot average shade at each transect and reach - comparing hemiphotos to LiDAR
-df.transect$shade.lidar.leafoff.dsm <- df.transect$shade.lidar.leafoff.dsm / 100
+#Plot average shade at each transect (grouped by reach) - comparing hemiphotos to LiDAR
 df.transect.shade.m <- melt(df.transect, id.vars = c("reach.id", "transect.no"), 
                       measure.vars = c("shade.avg", "shade.lidar.leafoff.dsm"))
 colnames(df.transect.shade.m)[3] <- "method"  #update to reflect that variable column is the method of estimating shade
@@ -401,26 +418,62 @@ df.transect.shade.m$method[df.transect.shade.m$method == "shade.lidar.leafoff.ds
 ggplot(df.transect.shade.m, aes(transect.no, 100 * value, group = factor(reach.id), colour = method)) +
   geom_point() +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
-  labs(title = "2b. Average Shade at Each Transect from WinSCANOPY Simulation and LiDAR Analysis",
+  labs(title = "2b. Average Shade at Transect from WinSCANOPY and LiDAR Analyses",
        x = "Transect #", y = "Average % Shade Over Growing Season") +
   facet_wrap(~ reach.id,  labeller = label_both)
 
+#Plot lidar-derived shade vs. Winscanopy derived shade *by transect*
+ggplot(df.transect, aes(x = shade.lidar.leafoff.dsm, y = shade.avg * 100, color = veg.code.avg)) + geom_point() +
+  scale_colour_gradientn(colours = rainbow(4))
+ggplot(df.transect, aes(x = veg.code.avg , y = openness.avg)) + geom_point() +
+  scale_colour_gradientn(colours = rainbow(4))
 
-#Plot observed values vs. shade in middle of stream for grassy transects
-df.transect.num.grass.m <- melt(df.transect.num.grass, id = c('shade.m'))
-ggplot(data = df.transect.num.grass.m, aes(x = value, y = shade.m * 100, colour = variable)) +
-  geom_point() +  xlab("Independent Variables") + ylab("% Shade in middle of stream transect") +
-  ggtitle("6a. Observed Values (Grassy Transects)") + 
+#calculate and plot average LiDAR v WinsCANOPY shade *by reach*
+df.transect.agg <- aggregate(df.transect[, c('shade.avg', 'shade.lidar.leafoff.dsm')], list(df.transect[, c('reach.id')]), mean)
+ggplot(df.transect.agg, aes(x = shade.lidar.leafoff.dsm * 100, y = shade.avg * 100)) + geom_point()
+xx <- df.transect.agg$shade.lidar.leafoff.dsm
+yy <- df.transect.agg$shade.avg
+write.csv(df.transect.agg, "data_table_avg_reach_shade") 
+
+#Linear regression model (Lidar vs Winscanopy shade)
+mod.reach <- lm(shade.avg ~ shade.lidar.leafoff.dsm, df.transect.agg)
+anova(mod.reach)  #Print ANOVA results
+summary(mod.reach)  #Print coefficients
+df.reach <- data.frame(x = xx, y = predict(mod.reach, data.frame(shade.lidar.leafoff.dsm = xx)), 
+                   sres = rstandard(mod.reach))  #df of standard residuals and predicted values
+ggplot(df.reach, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
+  geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
+  xlab("Shade from Lidar") + ylab("Standardized Residuals") +
+  ggtitle("Model: Standardized Residuals vs. Independent Variable")
+ggplot() +  #plot observed and predicted values
+  geom_point(data = df.transect.agg, aes(x = shade.lidar.leafoff.dsm, y = shade.avg)) +
+  geom_line(data = df.reach, aes(x = x, y = y)) + ylab("Shade from Winscanopy") +
+  xlab("Shade from Lidar") +
+  ggtitle("Model: Observed & Predicted Values")
+
+#Plot observed values vs. average transect shade (grassy only)
+df.transect.num.grass.m <- melt(df.transect.num.grass, id = c('shade.avg'))
+ggplot(data = df.transect.num.grass.m, aes(x = value, y = shade.avg * 100, colour = variable)) +
+  geom_point() +  xlab("Independent Variables") + ylab("Average Transect Shade Over Growing Season (%)") +
+  ggtitle("6a. Independent Variables vs. Avg Transect Shade (Grassy Transects)") + 
   facet_wrap( ~ variable, scales="free_x") + theme(legend.position = "none")
 
-#Plot observed values vs. shade in middle of stream for grassy transects
-df.transect.num.m <- melt(df.transect.num, id.vars = c('shade.m'))
-ggplot(data = df.transect.num.m, aes(x = value, y = shade.m * 100, colour = variable)) +
-  geom_point() +  xlab("Independent Variables") + ylab("% Shade in middle of stream transect") +
-  ggtitle("6b. Observed Values (All Transects)") + scale_y_continuous(breaks = seq(0, 100, 20)) +
+#Plot observed values vs. average transect shade (all vegetation types)
+df.transect.num.m <- melt(df.transect.num, id.vars = c('shade.avg'))
+ggplot(data = df.transect.num.m, aes(x = value, y = shade.avg * 100, colour = variable)) +
+  geom_point() +  xlab("Independent Variables") + ylab("Average Transect Shade Over Growing Season (%)") +
+  ggtitle("6b. Independent Variables vs. Avg Transect Shade (All Transects)") + scale_y_continuous(breaks = seq(0, 100, 20)) +
   facet_wrap( ~ variable, scales="free_x") + theme(legend.position = "none")
 
-#Plot vegetation height for all transects wrapped by veg code avg
+#Plot shade based on vegetation type
+df.transect.m.shadeveg <- melt(df.transect, id.vars = c("reach.id", "transect.no", "veg.code.avg"), 
+                                   measure.vars = c("shade.avg"))
+df.transect.m.shadeveg$veg.code.avg <- factor(df.transect.m.shadeveg$veg.code.avg * 100)
+ggplot(df.transect.m.shadeveg, aes(veg.code.avg, value * 100)) + geom_boxplot() + 
+  scale_y_continuous(breaks = seq(0, 100, 20)) + xlab("Riparian Vegetation Compisition: % Woody") +
+  ylab("Average Transect Shade Over Growing Season (%)") + ggtitle("6c. Transect Shade by Vegetation Type")
+
+#Plot vegetation height based on vegetation type
 df.transect.num.m.height <- subset(df.transect.num.m, variable == "herb.height.max.l.m" | 
                                            variable == "herb.height.max.r.m" | 
                                            variable == "herb.height.mode.l.m" | 
@@ -442,6 +495,12 @@ df.transect.width.m$veg.code.avg <- factor(df.transect.width.m$veg.code.avg)
 ggplot(df.transect.width.m, aes(veg.code.avg, value)) + geom_boxplot() + xlab("Riparian Vegetation (Grass = 0...Forest = 1)") +
   ylab("Wetted Width (m)") + ggtitle("7c. Wetted Width (All Transects)")
 
+#Plot stream azimuth based on vegetation type
+df.transect.genazimuth.m <- melt(df.transect, id.vars = c("reach.id", "transect.no", "veg.code.avg"), 
+                            measure.vars = c("gen.strm.azimuth"))
+df.transect.genazimuth.m$veg.code.avg <- factor(df.transect.genazimuth.m$veg.code.avg)
+ggplot(df.transect.genazimuth.m, aes(veg.code.avg, value)) + geom_boxplot() + xlab("Riparian Vegetation (Grass = 0...Forest = 1)") +
+  ylab("General Stream Azimuth (degrees from South)") + ggtitle("7d. General Stream Azimuth (All Transects)")
 
 #Plot lens height based on vegetation type
 df.transect.lens.m <- melt(df.transect, id.vars = c('reach.id', 'transect.no', 'veg.code.avg'), 
