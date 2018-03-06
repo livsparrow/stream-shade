@@ -43,7 +43,6 @@ library(plyr)
 
 # Section 3: Read and format data -----------------------------------------
 
-
 #Read in and format the field data
 df <- read.csv('TidyTransectData.csv', header = TRUE)  #Read full table of data collected
 df$date <- as.character(df$date)  #convert date to character string
