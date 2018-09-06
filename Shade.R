@@ -1,4 +1,4 @@
-#Brown's Creek Riparian Shading Study December 22, 2017
+#Brown's Creek Riparian Shading Study September 6, 2018
 #by Olivia Sparrow
 #Civil Engineering Master's Student, University of Minnesota-Twin Cities
 #Water Resources Engineer, Emmons & Olivier Resources
