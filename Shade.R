@@ -44,6 +44,7 @@ library(classInt)
 library(lidR)
 library(plyr)
 library(wesanderson)
+library(lemon)
 
 # Section 3: Read and format data -----------------------------------------
 
@@ -166,21 +167,20 @@ df.stage.shade <- data.frame("Reach" = df.stage$Reach, "transect.no" = df.stage$
 #melt and rename stage (height) and shade data frames by position
 df.stage.height.m <- melt(df.stage.height, id.vars = c("Reach", "transect.no"), 
                           measure.vars = c("Left", "Middle", "Right"))
-colnames(df.stage.height.m) <- c("Reach", "transect.no", "position", "lens.height")
+colnames(df.stage.height.m) <- c("Reach", "Transect", "Position", "lens.height")
 df.stage.shade.m <- melt(df.stage.shade, id.vars = c("Reach", "transect.no"), 
                           measure.vars = c("Left", "Middle", "Right"))
-colnames(df.stage.shade.m) <- c("Reach", "transect.no", "position", "shade")
+colnames(df.stage.shade.m) <- c("Reach", "Transect", "Position", "shade")
 #merge staging dataframes
 df.stage.m <- data.frame(df.stage.height.m, "shade" = df.stage.shade.m$shade)
 setorder(df.stage.m, lens.height)
-head(df.stage.m)
 #subset staging df by transect and position
-df.stage.m.36L <- subset(df.stage.m, transect.no == 6 & position == "Left")
-df.stage.m.36M <- subset(df.stage.m, transect.no == 6 & position == "Middle")
-df.stage.m.36R <- subset(df.stage.m, transect.no == 6 & position == "Right")
-df.stage.m.39L <- subset(df.stage.m, transect.no == 9 & position == "Left")
-df.stage.m.39M <- subset(df.stage.m, transect.no == 9 & position == "Middle")
-df.stage.m.39R <- subset(df.stage.m, transect.no == 9 & position == "Right")
+df.stage.m.36L <- subset(df.stage.m, Transect == 6 & Position == "Left")
+df.stage.m.36M <- subset(df.stage.m, Transect == 6 & Position == "Middle")
+df.stage.m.36R <- subset(df.stage.m, Transect == 6 & Position == "Right")
+df.stage.m.39L <- subset(df.stage.m, Transect == 9 & Position == "Left")
+df.stage.m.39M <- subset(df.stage.m, Transect == 9 & Position == "Middle")
+df.stage.m.39R <- subset(df.stage.m, Transect == 9 & Position == "Right")
 #write each to curve CSV
 write.csv(df.stage.m, "data_table_staging_tables")
 
@@ -188,14 +188,19 @@ write.csv(df.stage.m, "data_table_staging_tables")
 # Section 6: Regression of Stage-Shade Curves and Correction --------------
 
 #Remove outlier point on Reach 3, Transect 9, Left at highest elevation above stream
-df.stage.m <- df.stage.m[!(df.stage.m$transect.no == 9 & df.stage.m$lens.height > 0.7 & df.stage.m$position == "Left"),]
+df.stage.m <- df.stage.m[!(df.stage.m$Transect == 9 & df.stage.m$lens.height > 0.7 & df.stage.m$Position == "Left"),]
 
+#########################
+######REPORT FIGURE######
 #Plot shade-stage curves for 4 reference transects
-ggplot(df.stage.m, aes(lens.height, shade * 100, colour = position)) + geom_point() + geom_line() +
-  labs(title = "1a: Stage-Shade Curves from WinSCANOPY Simulation", x = "Height of lens above water (m)", 
-       y = "Average % Shade Over Growing Season") +
+ggplot(df.stage.m, aes(lens.height, shade * 100, colour = Position)) + geom_point() + geom_line() +
+  labs(x = "Height of Lens Above Water (m)", y = "HP-Based Shade, Growing Season Average (%)") +
   scale_y_continuous(breaks = seq(0, 100, 20)) +
-  facet_wrap(~ Reach + transect.no,  labeller = label_both)
+  facet_wrap(~ Reach + Transect,  labeller = label_both) +
+  theme(axis.text = element_text(size = 18)) + 
+  theme_grey(base_size = 20) + 
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
+  theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
 
 #Define standard x value (xs) and interpolate corresponding ys value
 #determine standard reference values for x and y
@@ -214,42 +219,42 @@ for(i in 1:length(rr))  #linear interpolation variables (x1, x2, y1, and y2)
   r <- df.ys[i, 1]  #current reach
   t <- df.ys[i, 2]  #current transect
   p <- df.ys[i, 3]  #current position (left, middle, right)
-  df.ys[i, 4] <- min(df.stage.m$lens.height[df.stage.m$Reach == r & df.stage.m$transect.no == t &
-                                     df.stage.m$position == p])
-  df.ys[i, 5] <- min(df.stage.m$lens.height[df.stage.m$Reach == r & df.stage.m$transect.no == t &
-                                     df.stage.m$position == p & df.stage.m$lens.height > df.ys[i, 4]])
-  df.ys[i, 6] <- df.stage.m$shade[df.stage.m$Reach == r & df.stage.m$transect.no == t &
-                                     df.stage.m$position == p & df.stage.m$lens.height == df.ys[i, 4]]
-  df.ys[i, 7] <- df.stage.m$shade[df.stage.m$Reach == r & df.stage.m$transect.no == t &
-                           df.stage.m$position == p & df.stage.m$lens.height == df.ys[i, 5]]
+  df.ys[i, 4] <- min(df.stage.m$lens.height[df.stage.m$Reach == r & df.stage.m$Transect == t &
+                                     df.stage.m$Position == p])
+  df.ys[i, 5] <- min(df.stage.m$lens.height[df.stage.m$Reach == r & df.stage.m$Transect == t &
+                                     df.stage.m$Position == p & df.stage.m$lens.height > df.ys[i, 4]])
+  df.ys[i, 6] <- df.stage.m$shade[df.stage.m$Reach == r & df.stage.m$Transect == t &
+                                     df.stage.m$Position == p & df.stage.m$lens.height == df.ys[i, 4]]
+  df.ys[i, 7] <- df.stage.m$shade[df.stage.m$Reach == r & df.stage.m$Transect == t &
+                           df.stage.m$Position == p & df.stage.m$lens.height == df.ys[i, 5]]
 
 }
 #interpolate reference value for shade
 df.ys$ys <- (df.ys$xs - df.ys$x1) * (df.ys$y2 - df.ys$y1) / (df.ys$x2 - df.ys$x1) + df.ys$y1  
 names(df.ys)[1] <- "Reach"
-names(df.ys)[2] <- "transect.no"
-names(df.ys)[3] <- "position"
+names(df.ys)[2] <- "Transect"
+names(df.ys)[3] <- "Position"
 #save reference values to staging df
-df.stage.mer <- merge(df.stage.m, df.ys, by = c("Reach", "transect.no","position"), all.x = TRUE)
+df.stage.mer <- merge(df.stage.m, df.ys, by = c("Reach", "Transect","Position"), all.x = TRUE)
 #standardize the height and shade using reference values
 df.stage.mer$xstar1 <- df.stage.mer$lens.height / df.stage.mer$xs  #standardize lens height above stream
 df.stage.mer$ystar1 <- df.stage.mer$shade / df.stage.mer$ys  #standardize shade
 #plot normalized shade-stage curves for all reference transects
-ggplot(df.stage.mer, aes(xstar1, ystar1, colour = position)) + geom_point() + geom_line() +
+ggplot(df.stage.mer, aes(xstar1, ystar1, colour = Position)) + geom_point() + geom_line() +
   labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
        y = "Normalized Average Shade Over Growing Season") +
-  facet_wrap(~ Reach + transect.no,  labeller = label_both)
-df.stage.mer$line <- paste(df.stage.mer$Reach, df.stage.mer$transect.no, df.stage.mer$position)
-ggplot(df.stage.mer, aes(xstar1, ystar1, colour = position, group = line)) + geom_point() + geom_line() +  #without wrapping to see consistency
+  facet_wrap(~ Reach + Transect,  labeller = label_both)
+df.stage.mer$line <- paste(df.stage.mer$Reach, df.stage.mer$Transect, df.stage.mer$Position)
+ggplot(df.stage.mer, aes(xstar1, ystar1, colour = Position, group = line)) + geom_point() + geom_line() +  #without wrapping to see consistency
   labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
        y = "Normalized Average Shade Over Growing Season")
 
 #Developing regression models to use in correcting shade in the transects df
 #divide the df into three based on shade since they look like they have three separate relationships
-df.stage.mer1 <- subset(df.stage.mer, shade < 0.5 & position != "Left")  #df for developing model for adjusting 
+df.stage.mer1 <- subset(df.stage.mer, shade < 0.5 & Position != "Left")  #df for developing model for adjusting 
                                                                         #low-shaded transects in middle and right positions
 df.stage.mer2 <- subset(df.stage.mer, shade >= 0.5)  #df for developing model for adjusting high-shaded areas
-df.stage.mer3 <- subset(df.stage.mer, position == "Left" & transect.no == 6)  #df for the unique left position curve
+df.stage.mer3 <- subset(df.stage.mer, Position == "Left" & Transect == 6)  #df for the unique left position curve
 #note: df.stage.mer2 and df.stage.mer3 are not used beyond this point because forested areas did not see a lot of change vs. height
     #for the left bank, there may be significant change from heighted elevations, however these were not common in grassy reaches.
     #further work will be done in my thesis to do further corrections on the left bank df.stage.mer3 and to demsontrate the flattness
@@ -348,7 +353,9 @@ df.test <- subset(df,purpose == 'Test')  #Create a smaller table of just the two
 #Create long dataframes for plotting results for each transect and stage-shade curves
 df.transect.m <- melt(df.transect, id.vars = c("Reach", "transect.no"), 
                       measure.vars = c("shade.l", "shade.m", "shade.r", "shade.avg"))
-colnames(df.transect.m)[colnames(df.transect.m) =='variable'] <- 'Position'
+colnames(df.transect.m)[colnames(df.transect.m) =='variable'] <- 'Position'  #change column heading for position across transect
+#rename positions for graphing later
+df.transect.m <- mutate(df.transect.m, Position = revalue(Position, c("shade.l" = "Left", "shade.m" = "Middle", "shade.r" = "Right", "shade.avg" = "Average")))
 df.transect.varh.m <- melt(df.transect, id.vars = c("Reach", "transect.no"), 
                       measure.vars = c("shade.varh.l", "shade.varh.m", "shade.varh.r", "shade.varh.avg"))
 #export shade results for use in stream temperature model shade input
@@ -386,19 +393,21 @@ corrplot.mixed(df.transect.grass.corr, upper = "color", number.cex = .4, number.
 ######REPORT FIGURE######
 #Plot shade for each reach and transect and position (after lens height correction)
 ggplot(df.transect.m, aes(transect.no, 100 * value, colour = Position)) + geom_point() + geom_line() +
-  labs(x = "Transect #", y = "Average Shade Over Growing Season (%)", caption = "after correction for lens height above stream") +
+  labs(x = "Transect", y = "HP-Based Shade, Growing Season Avg (%)", caption = "after correction for lens height above stream") +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
-  facet_wrap(~ Reach,  labeller = label_both) +   theme(axis.text = element_text(size = 18)) + 
+  facet_wrap(~ Reach,  labeller = label_both, ncol = 2) +   theme(axis.text = element_text(size = 18)) + 
   theme_grey(base_size = 20) + 
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
-  theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0)))
+  theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
+
+summary(df.transect)  #summary statistics of the transects (not stage or test locations) used in reported statistics
 
 #Plot shade for each reach and transect and position (before lens height correction)
-ggplot(df.transect.varh.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
-  labs(title = "1b. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
-       y = "Average % Shade Over Growing Season", caption = "before correction for lens height above stream") +
-  scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
-  facet_wrap(~ Reach,  labeller = label_both)
+# ggplot(df.transect.varh.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
+#   labs(title = "1b. Estimated Shade from WinSCANOPY Simulation", x = "Transect #", 
+#        y = "Average % Shade Over Growing Season", caption = "before correction for lens height above stream") +
+#   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
+#   facet_wrap(~ Reach,  labeller = label_both)
 
 #Plot average shade at each transect and reach
 ggplot(df.transect, aes(transect.no, shade.avg * 100, group = factor(Reach), colour = factor(Reach))) +
