@@ -11,17 +11,10 @@
 #to assess potential predictive models of shade.
 
 
-# Section 1: To Do List ---------------------------------------------------
+# Section 1: Notes ---------------------------------------------------
 
 
-#TO DO:
-#label each transect on x axis
-#add note on the assumed growing season
-#import and plot shade over an entire season at one site
-#fix variable labels in graphs to be more appropriate (i.e. not just their parameter numbers with periods)
-#note that it's left to right looking downstream
-#figure out how to import and use GIS data
-#TO DO: plot maps of observed variables (leaflet?)
+#left and right banks identified looking downstream
 
 
 # Section 2: Libraries ----------------------------------------------------
@@ -232,36 +225,41 @@ for(i in 1:length(rr))  #linear interpolation variables (x1, x2, y1, and y2)
                            df.stage.m$Position == p & df.stage.m$lens.height == df.ys[i, 5]]
 
 }
-#interpolate reference value for shade
+#interpolate reference value for shade from each stage-shade curve
 df.ys$ys <- (df.ys$xs - df.ys$x1) * (df.ys$y2 - df.ys$y1) / (df.ys$x2 - df.ys$x1) + df.ys$y1  
 names(df.ys)[1] <- "Reach"
 names(df.ys)[2] <- "Transect"
 names(df.ys)[3] <- "Position"
 #save reference values to staging df
 df.stage.mer <- merge(df.stage.m, df.ys, by = c("Reach", "Transect","Position"), all.x = TRUE)
-#standardize the height and shade using reference values
+#normalize the height and shade using reference values
 df.stage.mer$xstar1 <- df.stage.mer$lens.height / df.stage.mer$xs  #standardize lens height above stream
 df.stage.mer$ystar1 <- df.stage.mer$shade / df.stage.mer$ys  #standardize shade
 #plot normalized shade-stage curves for all reference transects
 ggplot(df.stage.mer, aes(xstar1, ystar1, colour = Position)) + geom_point() + geom_line() +
-  labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
+  labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY)", x = "Normalized Lens Height Above Water",
        y = "Normalized Average Shade Over Growing Season") +
   facet_wrap(~ Reach + Transect,  labeller = label_both)
 df.stage.mer$line <- paste(df.stage.mer$Reach, df.stage.mer$Transect, df.stage.mer$Position)
-ggplot(df.stage.mer, aes(xstar1, ystar1, colour = Position, group = line)) + geom_point() + geom_line() +  #without wrapping to see consistency
-  labs(title = "1b: Standardized Stage-Shade Curves (WinSCANOPY) - Method 1", x = "Normalized Lens Height Above Water",
-       y = "Normalized Average Shade Over Growing Season")
+
+#plot normalized shade-stage curves in one plot
+ggplot(df.stage.mer, aes(xstar1, ystar1, colour = Position, group = line)) + geom_point(aes(size = 1, shape = Vegetation)) + geom_line() +  #without wrapping to see consistency
+  labs(x = "Normalized Lens Height Above Water", y = "Normalized HP-Based Shade") +
+  theme(axis.text = element_text(size = 18)) + 
+  theme_grey(base_size = 20) + 
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
+  theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
 
 #Developing regression models to use in correcting shade in the transects df
 #divide the df into three based on shade since they look like they have three separate relationships
 df.stage.mer1 <- subset(df.stage.mer, shade < 0.5 & Position != "Left")  #df for developing model for adjusting 
                                                                         #low-shaded transects in middle and right positions
-df.stage.mer2 <- subset(df.stage.mer, shade >= 0.5)  #df for developing model for adjusting high-shaded areas
+df.stage.mer2 <- subset(df.stage.mer, shade >= 0.5)  #df for high-shaded areas
 df.stage.mer3 <- subset(df.stage.mer, Position == "Left" & Transect == 6)  #df for the unique left position curve
 #note: df.stage.mer2 and df.stage.mer3 are not used beyond this point because forested areas did not see a lot of change vs. height
-    #for the left bank, there may be significant change from heighted elevations, however these were not common in grassy reaches.
-    #further work will be done in my thesis to do further corrections on the left bank df.stage.mer3 and to demsontrate the flattness
-    #of df.stage.mer2. Hereafter, adjustments are only made for middle and right bank shading in low-shaded reaches.
+    #for the left bank, there may be significant change from heightened elevations, however these were not common in grassy reaches.
+    #The left position in transect 3-6 was an outlier. 
+    #Hereafter, adjustments are only made for middle and right bank shading in low-shaded reaches.
 
 #define independent variables for plotting and modeling
 hh1 <- df.stage.mer1$xstar1
@@ -282,13 +280,13 @@ fexample1 <- function(b_parm) {  # Define minimization function to use in solvin
   bo = b_parm[1]
   b1 = b_parm[2]
   sum( ( y - bo * exp(b1 * x) ) ^ 2 )
-}                                          
-# Determines optimal values using downhill simplex method of Nedler and Mead
+}                     
+# Determine optimal values using downhill simplex method of Nelder and Mead
 # Use initial values of bo = 10, and b1 = -1
 nonlinear = optim(c(10, -1), fexample1)  # find the optimal parameters for the regression line
 nonlinear$par  # Best fit parameter values
 nonlinear$value  # Residual sum of squares
-fexample2 <- function(b_parm, x) {  # Define power regression function
+fexample2 <- function(b_parm, x) {  # Define exponential regression function
   bo = b_parm[1]
   b1 = b_parm[2]
   bo * exp(b1 * x)
@@ -309,10 +307,8 @@ r = range(data$norm.lens.height)
 d = seq(r[1], r[2], length = 100)
 lines(d, fexample2(nonlinear$par, d))
 legend(2.8, 1.1, c('obs', 'fit'), pch = c(2, NA), lty = c(NA, 1))
-# TODO: clean up above code for formatting consistency & improve plots (use ggplot) &
-# TODO: add plot of the correction below, applied to the original stage-storage curves
 
-# Create function to correct measured x and y to a common height above stream using the above regression 
+# Create function to correct measured x and y to a common height (xc) above stream using the above exponential regression 
 fcorr <- function(b_parm, xm, ym, xs = 0.2, xc = 0.1){
   bo = b_parm[1]
   b1 = b_parm[2]
@@ -346,7 +342,7 @@ for(i in 1:nrow(df)){  #linear interpolation variables (x1, x2, y1, and y2)
 #Subset dataframe for use in the subsequent sections
 df.transect <- subset(df, purpose == 'Transect')  #Create a smaller table of just the transect observations
 df.transect.num <- df.transect[, sapply(df.transect, is.numeric)]  #Create df of only numeric values for correlation analysis
-df.transect.grass <- subset(df.transect, veg.code.avg == 0)  #Numerical observations at grassy & mixed transects
+df.transect.grass <- subset(df.transect, veg.code.avg == 0)  #Numerical observations at grassy transects
 df.test <- subset(df,purpose == 'Test')  #Create a smaller table of just the two sites to be used to test the regression
 
 #Create long dataframes for plotting results for each transect and stage-shade curves
@@ -388,13 +384,16 @@ corrplot.mixed(df.transect.grass.corr, upper = "color", number.cex = .4, number.
 
 # Section 8: Plot Observed Data and Summary Statistics --------------------
 
+#how many transects are entirely grassy
+length(which(df.transect$veg.type.l == "G", df.transect$veg.type.r == "G"))
+
 #########################
 ######REPORT FIGURE######
 #Plot shade for each reach and transect and position (after lens height correction)
 ggplot(df.transect.m, aes(transect.no, 100 * value, colour = Position)) + geom_point() + geom_line() +
   labs(x = "Transect", y = "HP-Based Shade, Growing Season Avg (%)", caption = "after correction for lens height above stream") +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
-  facet_wrap(~ Reach,  labeller = label_both, ncol = 2) +   theme(axis.text = element_text(size = 18)) + 
+  facet_wrap(~ Reach,  labeller = label_both, ncol = 2) + theme(axis.text = element_text(size = 18)) + 
   theme_grey(base_size = 20) + 
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
   theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
@@ -415,19 +414,23 @@ ggplot(df.transect, aes(transect.no, shade.avg * 100, group = factor(Reach), col
        x = "Transect #", y = "Average % Shade Over Growing Season") +
   facet_wrap(~ Reach,  labeller = label_both)
 
+#########################
+######REPORT FIGURE######
 #Plot average shade at each transect (grouped by reach) - comparing hemiphotos to LiDAR
 df.transect.shade.m <- melt(df.transect, id.vars = c("Reach", "transect.no"), 
                       measure.vars = c("shade.avg", "shade.lidar.leafoff.dsm"))
-colnames(df.transect.shade.m)[3] <- "method"  #update to reflect that variable column is the method of estimating shade
-levels(df.transect.shade.m$method) <- c(levels(df.transect.shade.m$method), "WinSCANOPY", "LiDAR")
-df.transect.shade.m$method[df.transect.shade.m$method == "shade.avg"] <- "WinSCANOPY"
-df.transect.shade.m$method[df.transect.shade.m$method == "shade.lidar.leafoff.dsm"] <- "LiDAR"
-ggplot(df.transect.shade.m, aes(transect.no, 100 * value, group = factor(Reach), colour = method)) +
+colnames(df.transect.shade.m)[3] <- "Method"  #update to reflect that variable column is the method of estimating shade
+levels(df.transect.shade.m$Method) <- c(levels(df.transect.shade.m$Method), "HP", "LiDAR")
+df.transect.shade.m$Method[df.transect.shade.m$Method == "shade.avg"] <- "HP"
+df.transect.shade.m$Method[df.transect.shade.m$Method == "shade.lidar.leafoff.dsm"] <- "LiDAR"
+ggplot(df.transect.shade.m, aes(transect.no, 100 * value, group = factor(Reach), colour = Method)) +
   geom_point() +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
-  labs(title = "2b. Average Shade at Transect from WinSCANOPY and LiDAR Analyses",
-       x = "Transect #", y = "Average % Shade Over Growing Season") +
-  facet_wrap(~ Reach,  labeller = label_both)
+  labs(x = "Transect", y = "Shade, Growing Season Avg (%)") +
+  facet_wrap(~ Reach,  labeller = label_both) + theme(axis.text = element_text(size = 18)) + 
+  theme_grey(base_size = 20) + 
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
+  theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
 
 #Plot lidar-derived shade vs. Winscanopy derived shade *by transect*
 ggplot(df.transect, aes(x = shade.lidar.leafoff.dsm, y = shade.avg * 100, color = veg.code.avg)) + geom_point() +
