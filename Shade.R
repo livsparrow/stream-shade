@@ -158,22 +158,25 @@ df$veg.height.max.r.m <- apply(df[,c("HAR.r.m","herb.height.max.r.m")], 1, #save
 df.stage <- subset(df, purpose == 'Stage')  #Create a smaller table of just the staging observations
 
 #Break the stage and height dataframes into separate objects so they can be melted and then merged later
-df.stage.height <- data.frame("Reach" = df.stage$Reach, "transect.no" = df.stage$transect.no,
+df.stage.height <- data.frame("Reach" = df.stage$Reach, "Transect" = df.stage$transect.no,
                               "Left" = df.stage$lens.height.l, "Middle" = df.stage$lens.height.m,  
-                              "Right" = df.stage$lens.height.r)
-df.stage.shade <- data.frame("Reach" = df.stage$Reach, "transect.no" = df.stage$transect.no,
+                              "Right" = df.stage$lens.height.r, "Azimuth" = df.stage$gen.strm.azimuth,
+                              "Vegetation" = df.stage$veg.type.l)
+df.stage.shade <- data.frame("Reach" = df.stage$Reach, "Transect" = df.stage$transect.no,
                               "Left" = df.stage$shade.l, "Middle" = df.stage$shade.m,  
-                              "Right" = df.stage$shade.r)
+                              "Right" = df.stage$shade.r, "Azimuth" = df.stage$gen.strm.azimuth,
+                             "Vegetation" = df.stage$veg.type.l)
 #melt and rename stage (height) and shade data frames by position
-df.stage.height.m <- melt(df.stage.height, id.vars = c("Reach", "transect.no"), 
+df.stage.height.m <- melt(df.stage.height, id.vars = c("Reach", "Transect", "Azimuth", "Vegetation"), 
                           measure.vars = c("Left", "Middle", "Right"))
-colnames(df.stage.height.m) <- c("Reach", "Transect", "Position", "lens.height")
-df.stage.shade.m <- melt(df.stage.shade, id.vars = c("Reach", "transect.no"), 
+colnames(df.stage.height.m) <- c("Reach", "Transect", "Azimuth", "Vegetation", "Position", "lens.height")
+df.stage.shade.m <- melt(df.stage.shade, id.vars = c("Reach", "Transect", "Azimuth", "Vegetation"), 
                           measure.vars = c("Left", "Middle", "Right"))
-colnames(df.stage.shade.m) <- c("Reach", "Transect", "Position", "shade")
+colnames(df.stage.shade.m) <- c("Reach", "Transect", "Azimuth", "Vegetation", "Position", "shade")
 #merge staging dataframes
 df.stage.m <- data.frame(df.stage.height.m, "shade" = df.stage.shade.m$shade)
 setorder(df.stage.m, lens.height)
+df.stage.m <- mutate(df.stage.m, Vegetation = revalue(Vegetation, c("F" = "Woody", "G" = "Grassy", "M" = "Mixed")))
 #subset staging df by transect and position
 df.stage.m.36L <- subset(df.stage.m, Transect == 6 & Position == "Left")
 df.stage.m.36M <- subset(df.stage.m, Transect == 6 & Position == "Middle")
@@ -196,7 +199,7 @@ df.stage.m <- df.stage.m[!(df.stage.m$Transect == 9 & df.stage.m$lens.height > 0
 ggplot(df.stage.m, aes(lens.height, shade * 100, colour = Position)) + geom_point() + geom_line() +
   labs(x = "Height of Lens Above Water (m)", y = "HP-Based Shade, Growing Season Average (%)") +
   scale_y_continuous(breaks = seq(0, 100, 20)) +
-  facet_wrap(~ Reach + Transect,  labeller = label_both) +
+  facet_wrap(~ Vegetation + Azimuth,  labeller = label_both) +
   theme(axis.text = element_text(size = 18)) + 
   theme_grey(base_size = 20) + 
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
@@ -317,17 +320,13 @@ fcorr <- function(b_parm, xm, ym, xs = 0.2, xc = 0.1){
 }
 
 # Update data frames to save the old Winscanopy shade (at varying lens heights)
-# TODO: would be cleaner to name columns this way in datatable (excel) and then this could be deleted (earlier graphs would need updates)
 df$shade.varh.m <- df$shade.m
 df$shade.varh.l <- df$shade.l
 df$shade.varh.r <- df$shade.r
 df$shade.varh.avg <- df$shade.avg
-# #correct low-shaded middle and right transect shading
-# df$shade.m[df$shade.varh.m < 0.5] <- fcorr(b_parm = nonlinear$par, xm = df$lens.height.m, ym = df$shade.varh.m)  
-# df$shade.r[df$shade.varh.r < 0.5] <- fcorr(b_parm = nonlinear$par, xm = df$lens.height.r, ym = df$shade.varh.r)
-# #recalculate average shade for all transects
-# df$shade.avg = mean(c(df$shade.m, df$shade.l, df$shade.r))
 
+# Apply the function to correct height-varying shade
+# Correction was only applied to middle and right positions where original shade was less than 50%
 for(i in 1:nrow(df)){  #linear interpolation variables (x1, x2, y1, and y2) 
   if (df[i, which(colnames(df) == "shade.varh.m")] < 0.5) {
     df[i, which(colnames(df) == "shade.m")] <- fcorr(b_parm = nonlinear$par, 
@@ -519,6 +518,7 @@ ggplot(df.transect.genazimuth.m, aes(veg.code.avg, value)) + geom_boxplot() + xl
 df.transect.lens.m <- melt(df.transect, id.vars = c('Reach', 'transect.no', 'veg.code.avg'), 
                            measure.vars = c('lens.height.m', 'lens.height.l', 'lens.height.r'))
 df.transect.lens.m$veg.code.avg <- factor(df.transect.lens.m$veg.code.avg)
+means <- aggregate(lens.height ~ veg.code.avg, df.transect.lens.m, mean) #mean lens height for each veg type
 ggplot(df.transect.lens.m, aes(veg.code.avg, value)) + geom_boxplot() + xlab("Riparian Vegetation (Grass = 0...Forest = 1)") +
   ylab("Lens Height Above Water (m)") + ggtitle("8. Height of Camera Lens Above Stream (All Transects)")
 
