@@ -1,19 +1,16 @@
-#Brown's Creek Riparian Shading Study September 6, 2018
+#Brown's Creek Riparian Shading Study November 18, 2018
 #by Olivia Sparrow
 #Civil Engineering Master's Student, University of Minnesota-Twin Cities
 #Water Resources Engineer, Emmons & Olivier Resources
 
 #Description of code: This code reads in the shade estimated using two methods:
-#    (1) LiDAR (collected in 2011, analyzed by Herb & Correll in 2016) processed in Arcmap radiation tool
-#    (2) hemispherical photos (collected by me in 2017) processed in WinSCANOPY
+#    (1) LiDAR collected in 2011, analyzed with Arcmap radiation tool by Herb & Correll in 2016 
+#    (2) Hemispherical photos collected by me in 2017 and processed in WinSCANOPY
 #
-#The code also reads in physical characteristics of the monitoring sites. The code manipulates the data
-#to assess potential predictive models of shade.
+#The code also reads in physical characteristics of the monitoring sites.
 
 
 # Section 1: Notes ---------------------------------------------------
-
-
 #left and right banks identified looking downstream
 
 
@@ -77,8 +74,6 @@ df$northing <- df.cord.utm$coords.x2
 
 # Section 4: Spatial Data Analysis --------------------------------------------
 
-#TODO add back in the analysis of the calibrated Lidar shade from the thermal study
-
 #plot the project boundary and creek location (Note that coordinates are in Northing and Easting)
 plot(st_geometry(shp.boundary), border = "black", lwd = 2, main = "Study Area Boundary")  #plots boundary of study area
 plot(st_geometry(shp.creek), add = TRUE, col = "blue")
@@ -125,11 +120,6 @@ plot(pts.transects["shade.lidar.leafoff.dsm"], axes = TRUE, col = pal2[as.numeri
      main = "Shade from GIS Analysis of 2011 LiDAR at Riparian Shading Study Transects")
 legend("topright", legend = paste("<", round(br[-1])), col = pal2, pch = 1, lwd = 2, cex = .3)
 df$shade.lidar.leafoff.dsm <- df$shade.lidar.leafoff.dsm / 100  #convert to fraction
-
-#TODO: the above uses the lidar results AFTER they were calibrated by Bill Herb - check his email to see if 
-#I need to use original results. They were also averaged over 20+ foot segments of the stream, but Bill did not recommend
-#going to original results because they were so noisy. As such, it might be more appropriate to compare the average shade
-#across each stream segment resulting from the lidar and hemiphoto riparian shade analysis instead of at specific points.
 
 #Read the vegetation height above river (HAR) raster and populate the dataframe with this new information
 shp.pt.circ <- st_buffer(pts.transects, dist = 10)  #create 27m buffer circles around each data point
@@ -186,9 +176,8 @@ write.csv(df.stage.m, "data_table_staging_tables")
 #Remove outlier point on Reach 3, Transect 9, Left at highest elevation above stream
 df.stage.m <- df.stage.m[!(df.stage.m$Transect == 9 & df.stage.m$lens.height > 0.7 & df.stage.m$Position == "Left"),]
 
-#########################
-######REPORT FIGURE######
-#Plot shade-stage curves for 4 reference transects
+
+#REPORT FIGURE: Plot shade-stage curves for 4 reference transects
 ggplot(df.stage.m, aes(lens.height, shade * 100, colour = Position)) + geom_point() + geom_line() +
   labs(x = "Height of Lens Above Water (m)", y = "HP-Based Shade, Growing Season Average (%)") +
   scale_y_continuous(breaks = seq(0, 100, 20)) +
@@ -250,7 +239,7 @@ ggplot(df.stage.mer, aes(xstar1, ystar1, colour = Position, group = line)) + geo
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) + 
   theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
 
-#Developing regression models to use in correcting shade in the transects df
+#Develop regression models to correct shade in the transects df
 #divide the df into three based on shade since they look like they have three separate relationships
 df.stage.mer1 <- subset(df.stage.mer, shade < 0.5 & Position != "Left")  #df for developing model for adjusting 
                                                                         #low-shaded transects in middle and right positions
@@ -343,6 +332,8 @@ for(i in 1:nrow(df)){  #linear interpolation variables (x1, x2, y1, and y2)
 df.transect <- subset(df, purpose == 'Transect')  #Create a smaller table of just the transect observations
 df.transect.num <- df.transect[, sapply(df.transect, is.numeric)]  #Create df of only numeric values for correlation analysis
 df.transect.grass <- subset(df.transect, veg.code.avg == 0)  #Numerical observations at grassy transects
+df.transect.wood <- subset(df.transect, veg.code.avg == 1)  #Numerical observations at woody transects
+df.transect.mix <- subset(df.transect, veg.code.avg > 0 & veg.code.avg < 1)  #Numerical observations at mixed veg transects
 df.test <- subset(df,purpose == 'Test')  #Create a smaller table of just the two sites to be used to test the regression
 
 #Create long dataframes for plotting results for each transect and stage-shade curves
@@ -387,9 +378,7 @@ corrplot.mixed(df.transect.grass.corr, upper = "color", number.cex = .4, number.
 #how many transects are entirely grassy
 length(which(df.transect$veg.type.l == "G", df.transect$veg.type.r == "G"))
 
-#########################
-######REPORT FIGURE######
-#Plot shade for each reach and transect and position (after lens height correction)
+#REPORT FIGURE: Plot shade for each reach and transect and position (after lens height correction)
 ggplot(df.transect.m, aes(transect.no, 100 * value, colour = Position)) + geom_point() + geom_line() +
   labs(x = "Transect", y = "HP-Based Shade, Growing Season Avg (%)", caption = "after correction for lens height above stream") +
   scale_x_continuous(breaks = seq(0, 11, 1)) + scale_y_continuous(breaks = seq(0, 100, 20)) +
@@ -399,6 +388,8 @@ ggplot(df.transect.m, aes(transect.no, 100 * value, colour = Position)) + geom_p
   theme(axis.title.x = element_text(margin = margin(t = 15, r = 0, b = 0, l = 0))) + theme(legend.position = "bottom")
 
 summary(df.transect)  #summary statistics of the transects (not stage or test locations) used in reported statistics
+summary(df.transect.grass)
+sapply(df.transect.grass, sd, na.rm=TRUE)
 
 #Plot shade for each reach and transect and position (before lens height correction)
 # ggplot(df.transect.varh.m, aes(transect.no, 100 * value, colour = variable)) + geom_point() + geom_line() +
@@ -414,9 +405,8 @@ ggplot(df.transect, aes(transect.no, shade.avg * 100, group = factor(Reach), col
        x = "Transect #", y = "Average % Shade Over Growing Season") +
   facet_wrap(~ Reach,  labeller = label_both)
 
-#########################
-######REPORT FIGURE######
-#Plot average shade at each transect (grouped by reach) - comparing hemiphotos to LiDAR
+
+#REPORT FIGURE: Plot average shade at each transect (grouped by reach) - comparing hemiphotos to LiDAR
 df.transect.shade.m <- melt(df.transect, id.vars = c("Reach", "transect.no"), 
                       measure.vars = c("shade.avg", "shade.lidar.leafoff.dsm"))
 colnames(df.transect.shade.m)[3] <- "Method"  #update to reflect that variable column is the method of estimating shade
@@ -475,9 +465,8 @@ ggplot(data = df.transect.num.m, aes(x = value, y = shade.avg * 100, colour = va
   ggtitle("6b. Independent Variables vs. Avg Transect Shade (All Transects)") + scale_y_continuous(breaks = seq(0, 100, 20)) +
   facet_wrap( ~ variable, scales="free_x") + theme(legend.position = "none")
 
-#########################
-######REPORT FIGURE######
-#Plot shade based on vegetation type
+
+#REPORT FIGURE: Plot shade based on vegetation type
 df.transect.m.shadeveg <- melt(df.transect, id.vars = c("Reach", "transect.no", "veg.code.avg"), 
                                    measure.vars = c("shade.avg"))
 df.transect.m.shadeveg$veg.code.avg <- factor(df.transect.m.shadeveg$veg.code.avg * 100)
@@ -537,266 +526,3 @@ ggplot(df.transect.lens.shade.m, aes(shade, lens.height, colour = veg.code.avg))
 df.transect.lens.shade.m.left <- subset(df.transect.lens.shade.m, position == "left")
 ggplot(df.transect.lens.shade.m.left, aes(shade, lens.height, colour = veg.code.avg)) + geom_point() + xlab("Shade at each position (left, middle, right)") +
   ylab("Lens Height Above Water (m)") + ggtitle("9b. Height of Camera Lens Above Stream (All Transects, Left Positions)")
-
-# # Section 9: Regression Models --------------------------------------------
-# 
-# #Create vectors for the independent variables
-# vv <- df.transect$veg.code.avg
-# ww <- df.transect$wetted.width.m 
-# tw <- df.transect$thalweg.depth.m
-# wwtw <- df.transect$width.to.depth
-# lhm <- df.transect$lens.height.m
-# lhl <- df.transect$lens.height.l  
-# lhr <- df.transect$lens.height.r
-# wel <- df.transect$wetted.edge.l.m
-# wer <- df.transect$wetted.edge.r.m
-# hmaxavg <- df.transect$herb.height.max.avg.m 
-# vhmaxr <- df.transect$veg.height.max.r.m
-# azm <- df.transect$strm.azimuth
-# azgen <- df.transect$gen.strm.azimuth
-# vdens <- df.transect$veg.dens.avg
-# hmodavg <- df.transect$herb.height.mode.avg.m
-# 
-# #Linear regression model (Model #1a: Veg Type vs. Shade in Middle)
-# mod1a <- lm(shade.m ~ veg.code.avg, df.transect)
-# anova(mod1a)  #Print ANOVA results
-# summary(mod1a)  #Print coefficients
-# df1a <- data.frame(x = vv, y = predict(mod1a, data.frame(veg.code.avg = vv)), 
-#                    sres = rstandard(mod1a))  #df of standard residuals and predicted values
-# ggplot(df1a, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Code for vegetation on both banks (0=grass; 1=forest)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 1a: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = veg.code.avg, y = shade.m * 100)) +
-#   geom_line(data = df1a, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   xlab("Code for vegetation on both banks (0=grass; 1=forest)") +
-#   ggtitle("Model 1a: Observed & Predicted Values")
-# 
-# #Linear regression model (Model #1b: Veg Type vs. Ln(Shade in Middle))
-# mod1b <- lm(log(shade.m) ~ veg.code.avg, df.transect)
-# anova(mod1b)  #Print ANOVA results
-# summary(mod1b)  #Print coefficients
-# df1b <- data.frame(x = vv, y = predict(mod1b, data.frame(veg.code.avg = vv)), 
-#                    sres = rstandard(mod1b))  #df of standard residuals and predicted values
-# ggplot(df1b, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Code for vegetation on both banks (0=grass; 1=forest)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 1b: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = veg.code.avg, y = log(shade.m))) +
-#   geom_line(data = df1b, aes(x = x, y = y)) + ylab("ln(Shade in Middle of Stream)") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   xlab("Code for vegetation on both banks (0=grass; 1=forest)") +
-#   ggtitle("Model 1b: Observed & Predicted Values")
-# 
-# #Multiple linear regression model (Model #2: all parameters for shade in middle of stream)
-# mod2 <- lm(shade.m ~ wetted.width.m + thalweg.depth.m + lens.height.m + veg.code.avg + 
-#              wetted.edge.l.m + wetted.edge.r.m + herb.height.max.avg.m + strm.azimuth + veg.height.max.l.m +
-#              veg.height.max.r.m, df.transect)
-# anova(mod2)  #Print ANOVA results
-# summary(mod2)  #Print coefficients
-# df2 <- data.frame(ypred = fitted(mod2), sres = rstandard(mod2)) 
-# ggplot(df2, aes(x = ypred * 100, y = sres)) + geom_point() +  #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Predicted Shade in Middle of Transect (%)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 2: Standardized Residuals vs. Dependent Variable")
-# 
-# #Multiple linear regression model (Model #3: ind vars sig at 5% level for shade in middle of stream)
-# mod3 <- lm(shade.m ~ wetted.width.m + thalweg.depth.m + lens.height.m + veg.code.avg + 
-#              strm.azimuth + veg.dens.avg + herb.height.mode.avg.m, df.transect)
-# anova(mod3)  #Print ANOVA results
-# summary(mod3)  #Print coefficients
-# df3 <- data.frame(ypred = fitted(mod3), sres = rstandard(mod3)) 
-# ggplot(df3, aes(x = ypred * 100, y = sres)) + geom_point() +  #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Predicted Shade in Middle of Transect (%)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 3: Standardized Residuals vs. Dependent Variable")
-# 
-# #Multiple linear regression model (Model #4: ind vars sig at 5% level for shade in middle of stream)
-# mod4 <- lm(shade.m ~ wetted.width.m + thalweg.depth.m + lens.height.m + veg.code.avg + 
-#              veg.dens.avg, df.transect)
-# anova(mod4)  #Print ANOVA results
-# summary(mod4)  #Print coefficients
-# df4 <- data.frame(ypred = fitted(mod4), sres = rstandard(mod4)) 
-# ggplot(df4, aes(x = ypred * 100, y = sres)) + geom_point() +  #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Predicted Shade in Middle of Transect (%)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 4: Standardized Residuals vs. Dependent Variable")
-# 
-# #Linear regression model (Model #5: Wetted Width vs. Shade in Middle)
-# mod5 <- lm(shade.m ~ wetted.width.m, df.transect)
-# anova(mod5)  #Print ANOVA results
-# summary(mod5)  #Print coefficients
-# df5 <- data.frame(x = ww, y = predict(mod5, data.frame(wetted.width.m = ww)), 
-#                   sres = rstandard(mod5))  #df of standard residual and predicted values from the linear model
-# ggplot(df5, aes(x = x, y = sres)) + geom_point() +  #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Wetted Width (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 5: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = wetted.width.m, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df5, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Wetted Width (m)") + ggtitle("Model 5: Observed & Predicted Values") +
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #6: Thalweg Depth vs. Shade in Middle)
-# mod6 <- lm(shade.m ~ thalweg.depth.m, df.transect)
-# anova(mod6)  #Print ANOVA results
-# summary(mod6)  #Print coefficients
-# df6 <- data.frame(x = tw, y = predict(mod6, data.frame(thalweg.depth.m = tw)), 
-#                   sres = rstandard(mod6))  #df of predicted and standard residual values from the linear model
-# ggplot(df6, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Thalweg Depth (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 6: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = thalweg.depth.m, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df6, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Thalweg Depth (m)") + ggtitle("Model 6: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #7: Lens Height Middle vs. Shade in Middle)
-# mod7 <- lm(shade.m ~ lens.height.m, df.transect)
-# anova(mod7)  #Print ANOVA results
-# summary(mod7)  #Print coefficients
-# df7 <- data.frame(x = lhm, y = predict(mod7, data.frame(lens.height.m = lhm)), 
-#                   sres = rstandard(mod7))  #df of predicted and standard residual values from the linear model
-# ggplot(df7, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Lens Height from Middle (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 7: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = lens.height.m, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df7, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Lens Height from Middle (m)") + ggtitle("Model 7: Observed & Predicted Values") +
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #8: Lens Height Left vs. Shade in Left)
-# mod8 <- lm(shade.l ~ lens.height.l, df.transect)
-# anova(mod8)  #Print ANOVA results
-# summary(mod8)  #Print coefficients
-# df8 <- data.frame(x = lhl, y = predict(mod8, data.frame(lens.height.l = lhl)), 
-#                        sres = rstandard(mod8))  #df of predicted and standard residual values from the linear model
-# ggplot(df8, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Lens Height from Left (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 8: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = lens.height.l, y = shade.l * 100, colour = veg.code.avg)) +
-#   geom_line(data = df8, aes(x = x, y = y * 100)) + ylab("% Shade on Left of Stream Transect") +
-#   xlab("Lens Height from Left (m)") + ggtitle("Model 8: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #9: Lens Height Right vs. Shade in Right)
-# mod9 <- lm(shade.r ~ lens.height.r, df.transect)
-# anova(mod9)  #Print ANOVA results
-# summary(mod9)  #Print coefficients
-# df9 <- data.frame(x = lhr, y = predict(mod9, data.frame(lens.height.r = lhr)),
-#                   sres = rstandard(mod9))  #df of predicted and standard residual values from the linear model
-# ggplot(df9, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Lens Height from Right (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 9: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = lens.height.r, y = shade.r * 100, colour = veg.code.avg)) +
-#   geom_line(data = df9, aes(x = x, y = y * 100)) + ylab("% Shade on Right of Stream Transect") +
-#   xlab("Lens Height from Right (m)") + ggtitle("Model 9: Observed & Predicted Values") +
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #10: Wetted Edge Left vs. Shade in Middle)
-# mod10 <- lm(shade.m ~ wetted.edge.l.m, df.transect)
-# anova(mod10)  #Print ANOVA results
-# summary(mod10)  #Print coefficients
-# df10 <- data.frame(x = wel, y = predict(mod10, data.frame(wetted.edge.l.m = wel)),
-#                    sres = rstandard(mod10))  #create a dataframe with standard residual values from the linear model
-# ggplot(df10, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Wetted Edge Left (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 10 (wetted edge left vs shade): Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = wetted.edge.l.m, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df10, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Wetted Edge Left (m)") + ggtitle("Model 10: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #11: Wetted Edge Right vs. Shade in Middle)
-# mod11 <- lm(shade.m ~ wetted.edge.r.m, df.transect)
-# anova(mod11)  #Print ANOVA results
-# summary(mod11)  #Print coefficients
-# df11 <- data.frame(x = wer, y = predict(mod11, data.frame(wetted.edge.r.m = wer)),
-#                    sres = rstandard(mod11))  #create a dataframe with standard residual values from the linear model
-# ggplot(df11, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Wetted Edge Left (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 11: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = wetted.edge.r.m, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df11, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Wetted Edge Right (m)") + ggtitle("Model 11: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #12: Wetted to depth vs. Shade in Middle)
-# mod12 <- lm(shade.m ~ width.to.depth, df.transect)
-# anova(mod12)  #Print ANOVA results
-# summary(mod12)  #Print coefficients
-# df12 <- data.frame(x = wwtw, y = predict(mod12, data.frame(width.to.depth = wwtw)), 
-#                    sres = rstandard(mod12))  #df of predicted and standard residual values from the linear model
-# ggplot(df12, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Width to Depth Ratio") + ylab("Standardized Residuals") +
-#   ggtitle("Model 12: Standardized Residuals vs. Independent Variable")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = width.to.depth, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df12, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Width to Depth Ratio") + ggtitle("Model 12: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4))
-# 
-# #Linear regression model (Model #13: General Azimuth of Stream vs. Shade in Middle)
-# mod13 <- lm(shade.m ~ gen.strm.azimuth, df.transect)
-# anova(mod13)  #Print ANOVA results
-# summary(mod13)  #Print coefficients
-# df13 <- data.frame(x = azgen, y = predict(mod13, data.frame(gen.strm.azimuth = azgen)), 
-#                    sres = rstandard(mod13))  #df of predicted and standard residual values from the linear model
-# ggplot(df13, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("General Stream Azimuth (degrees)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 13: Standardized Residuals vs. Independent Variable") + 
-#   labs(caption = "The departure angle of the stream from a south reference line (North-South = 0, Northwest-Southeast = -45)")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = gen.strm.azimuth, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df13, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("General Stream Azimuth (degrees)") + ggtitle("Model 13: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4)) + 
-#   labs(caption = "The departure angle of the stream from a south reference line (North-South = 0, Northwest-Southeast = -45)")
-# 
-# #Linear regression model (Model #14: Max Veg Height on Right vs. Shade in Middle)
-# mod14 <- lm(shade.m ~ veg.height.max.r.m, df.transect)
-# anova(mod14)  #Print ANOVA results
-# summary(mod14)  #Print coefficients
-# df14 <- data.frame(x = vhmaxr, y = predict(mod14, data.frame(veg.height.max.r.m = vhmaxr)), 
-#                    sres = rstandard(mod14))  #df of predicted and standard residual values from the linear model
-# ggplot(df14, aes(x = x, y = sres)) + geom_point() + #Standardized residuals plot
-#   geom_hline(yintercept = 0, col = "red", linetype = "dashed") +
-#   xlab("Maximum Height of Vegetation on Right Bank (m)") + ylab("Standardized Residuals") +
-#   ggtitle("Model 14: Standardized Residuals vs. Independent Variable") + 
-#   labs(caption = "within a 10 m offset from the creek centerline")
-# ggplot() +  #plot observed and predicted values
-#   geom_point(data = df.transect, aes(x = veg.height.max.r.m, y = shade.m * 100, colour = veg.code.avg)) +
-#   geom_line(data = df14, aes(x = x, y = y * 100)) + ylab("% Shade in Middle of Stream") +
-#   xlab("Maximum Height of Vegetation on Right Bank (m)") + ggtitle("Model 14: Observed & Predicted Values") + 
-#   scale_y_continuous(breaks = seq(0, 100, 20)) +
-#   scale_colour_gradientn(colours = rainbow(4)) + 
-#   labs(caption = "within a 10 m offset from the creek centerline")
-# 
-# 
